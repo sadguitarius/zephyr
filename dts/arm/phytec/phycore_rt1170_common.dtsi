@@ -79,6 +79,7 @@
 		reg = <0>;
 		status = "okay";
 		reset-gpios = <&gpio5 2 GPIO_ACTIVE_HIGH>;
+		int-gpios = <&gpio5 15 GPIO_ACTIVE_LOW>;
 
 		/*
 		 * The RT1170 MAC adds no RGMII delay, so the DP83867 supplies
@@ -88,13 +89,13 @@
 		ti,interface-type = "rgmii-id";
 		ti,rx-internal-delay = <0x5>;
 		ti,tx-internal-delay = <0x5>;
-
-		/*
-		 * Poll link status (no int-gpios): the nINT_ETHPHY interrupt
-		 * does not fire on this board. The dp83867 monitor thread
-		 * polls instead.
-		 */
 	};
+};
+
+&enet1g_ptp_clock {
+	status = "disabled";
+	pinctrl-0 = <&pinmux_enet1g_ptp>;
+	pinctrl-names = "default";
 };
 
 &flexspi {
