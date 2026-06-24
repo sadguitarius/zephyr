@@ -69,17 +69,6 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
 /* Generic-parser limits. */
 #define HID_FIELD_USAGES_MAX   6 /* explicit usages captured per field */
 #define HID_GLOBAL_STACK_DEPTH 4 /* HID Push/Pop nesting */
-/*
- * Keep the report-descriptor parser out of probe()'s own stack frame. The usbh
- * bus thread has a small stack (CONFIG_USBH_STACK_SIZE, 1 KB by default), and the
- * enumeration call chain already consumes a good part of it before probe() runs.
- * The parser carries a large working set that is only needed after the
- * descriptor-fetch control transfer has returned; as a separate (non-inlined)
- * frame that scratch stays transient and never piles onto the deep transfer call
- * chain. The setup helpers carry no large scratch and inline into probe() for
- * free, so only the parser needs this.
- */
-#define HID_NOINLINE           __attribute__((noinline))
 
 /*
  * HID Keyboard/Keypad usage (page 0x07) -> Zephyr input key code. Covers the
@@ -135,13 +124,24 @@ static const uint16_t hid_mouse_btnmap[3] = {
 	INPUT_BTN_MIDDLE,
 };
 
-/* Button namespace, selected from the enclosing application collection. */
+/*
+ * A HID Button usage is just an ordinal (Button 1, 2, 3...); its meaning depends
+ * on the device. We pick which INPUT_BTN_* family to map it to from the enclosing
+ * application collection: e.g. Button 1 -> BTN_LEFT for a mouse, BTN_SOUTH (A) for
+ * a gamepad. See hid_map_usage().
+ */
 enum hid_btn_ns {
 	HID_BTN_NS_GENERIC = 0,
 	HID_BTN_NS_MOUSE,
 	HID_BTN_NS_JOYSTICK,
 	HID_BTN_NS_GAMEPAD,
 };
+
+/* Input/Output/Feature main-item data bits (HID 1.11 §6.2.2.5). */
+#define HID_MAIN_ITEM_CONSTANT BIT(0) /* constant (1) vs data (0) */
+#define HID_MAIN_ITEM_VARIABLE BIT(1) /* variable (1) vs array (0) */
+#define HID_MAIN_ITEM_RELATIVE BIT(2) /* relative (1) vs absolute (0) */
+#define HID_MAIN_ITEM_NULL     BIT(6) /* null state */
 
 /* Parsed Input field flags. */
 #define HID_FIELD_VAR  BIT(0) /* variable (1) vs array (0) */
@@ -385,7 +385,11 @@ static bool hid_map_usage(uint16_t page, uint16_t usage, bool relative, uint8_t 
 	}
 }
 
-/* Resolve the usage of item `i` within a variable field. */
+/*
+ * Usage for item `i` of a variable field. When a field has more items than
+ * declared usages, the surplus repeat the last usage (explicit list) or clamp
+ * to usage_max (range) rather than mapping to nothing.
+ */
 static uint16_t hid_field_usage(const struct hid_field *const f, uint8_t i)
 {
 	if (f->n_usages > 0) {
@@ -596,9 +600,12 @@ static void hid_mouse_decode(struct hid_host_data *const data, const uint8_t *re
  * and register the report ids in data->reports[]. Best-effort: unrecognized or
  * unsupported items are skipped; the bit cursor is still advanced so following
  * fields stay correctly aligned.
+ *
+ * __noinline keeps this large frame off the small usbh_bus stack: it runs after
+ * the descriptor fetch returns, not nested beneath it.
  */
-static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
-					       const uint8_t *const rd, const size_t rd_len)
+static __noinline void hid_parse_report_desc(struct hid_host_data *const data,
+					     const uint8_t *const rd, const size_t rd_len)
 {
 	struct hid_global {
 		uint16_t usage_page;
@@ -608,7 +615,6 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 		uint8_t report_count;
 		uint8_t report_id;
 	} g = {0};
-	/* SoA push/pop backup stack: parallel arrays avoid per-element padding. */
 	uint16_t st_usage_page[HID_GLOBAL_STACK_DEPTH];
 	int32_t st_logical_min[HID_GLOBAL_STACK_DEPTH];
 	int32_t st_logical_max[HID_GLOBAL_STACK_DEPTH];
@@ -632,6 +638,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 		uint16_t bits;
 	} rbits[CONFIG_USBH_HID_MAX_REPORTS];
 	int n_rbits = 0;
+	uint16_t maxlen = 0;
 
 	size_t i = 0;
 
@@ -800,7 +807,8 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 				off = (ri >= 0) ? rbits[ri].bits : 0;
 
 				/* Store mappable, non-constant Input fields. */
-				if (!(uval & 0x01) && data->n_fields < CONFIG_USBH_HID_MAX_FIELDS &&
+				if (!(uval & HID_MAIN_ITEM_CONSTANT) &&
+				    data->n_fields < CONFIG_USBH_HID_MAX_FIELDS &&
 				    (eff_page == HID_USAGE_GEN_DESKTOP ||
 				     eff_page == HID_USAGE_GEN_KEYBOARD ||
 				     eff_page == HID_USAGE_GEN_BUTTON ||
@@ -815,9 +823,12 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 					f->usage_page = eff_page;
 					f->logical_min = g.logical_min;
 					f->logical_max = g.logical_max;
-					f->flags = ((uval & 0x02) ? HID_FIELD_VAR : 0) |
-						   ((uval & 0x04) ? HID_FIELD_REL : 0) |
-						   ((uval & 0x40) ? HID_FIELD_NULL : 0);
+					f->flags =
+						((uval & HID_MAIN_ITEM_VARIABLE) ? HID_FIELD_VAR
+										 : 0) |
+						((uval & HID_MAIN_ITEM_RELATIVE) ? HID_FIELD_REL
+										 : 0) |
+						((uval & HID_MAIN_ITEM_NULL) ? HID_FIELD_NULL : 0);
 					f->n_usages = n_usages;
 					for (uint8_t k = 0; k < n_usages; k++) {
 						f->usages[k] = usages[k];
@@ -870,8 +881,6 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 			break;
 		}
 	}
-
-	uint16_t maxlen = 0;
 
 	for (int r = 0; r < n_rbits; r++) {
 		data->reports[r].id = rbits[r].id;
@@ -1406,7 +1415,7 @@ static struct usbh_class_api usbh_hid_class_api = {
  * Match HID boot keyboard (3/1/1), boot mouse (3/1/2), and generic report-mode
  * (3/0/0) interfaces. probe() picks the boot or report-parser path by subclass.
  */
-static struct usbh_class_filter usbh_hid_filters[] = {
+static const struct usbh_class_filter usbh_hid_filters[] = {
 	{
 		.flags = USBH_CLASS_MATCH_CODE_TRIPLE,
 		.class = USB_BCC_HID,
