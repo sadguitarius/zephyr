@@ -186,10 +186,14 @@ const void *usbh_desc_get_next_function(const void *const desc)
 		skip_num = ass_d->bInterfaceCount;
 	}
 
-	/* Skip the interface if the head is interface */
-	if (usbh_desc_is_valid_interface(head)) {
-		skip_num = 1;
-	}
+	/*
+	 * When head is a plain interface no extra skipping is needed: the loop's
+	 * first usbh_desc_get_next() below already steps past this interface
+	 * descriptor, so the next interface it finds is the next function.
+	 * (Setting skip_num = 1 here was a bug — it skipped the very next
+	 * interface, making any function past the first unreachable on
+	 * multi-interface devices, e.g. a HID gamepad whose HID interface is #1.)
+	 */
 
 	while (true) {
 		/* If already on an Interface Association or Interface, this will skip it */
