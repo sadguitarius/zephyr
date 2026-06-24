@@ -71,12 +71,14 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
 #define HID_FIELD_USAGES_MAX	6	/* explicit usages captured per field */
 #define HID_GLOBAL_STACK_DEPTH	4	/* HID Push/Pop nesting */
 /*
- * Keep the report-descriptor parser and its setup helpers out of probe()'s own
- * stack frame. The usbh bus thread has a small stack (CONFIG_USBH_STACK_SIZE,
- * 1 KB by default), and the enumeration call chain already consumes a good part
- * of it before probe() runs. As separate (non-inlined) frames the parser's
- * scratch is transient and probe() stays small enough to log safely. (UVC, the
- * other in-tree host class, fits the same budget.)
+ * Keep the report-descriptor parser out of probe()'s own stack frame. The usbh
+ * bus thread has a small stack (CONFIG_USBH_STACK_SIZE, 1 KB by default), and the
+ * enumeration call chain already consumes a good part of it before probe() runs.
+ * The parser carries a large working set that is only needed after the
+ * descriptor-fetch control transfer has returned; as a separate (non-inlined)
+ * frame that scratch stays transient and never piles onto the deep transfer call
+ * chain. The setup helpers carry no large scratch and inline into probe() for
+ * free, so only the parser needs this.
  */
 #define HID_NOINLINE	__attribute__((noinline))
 
@@ -1107,7 +1109,7 @@ static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer
  * class descriptor 0x21). Per-interface, so multi-interface devices bind each
  * interface independently.
  */
-static HID_NOINLINE int hid_host_setup_iface(struct hid_host_data *const data,
+static int hid_host_setup_iface(struct hid_host_data *const data,
 					     struct usb_device *const udev,
 					     const uint8_t iface, uint16_t *const rdlen)
 {
@@ -1156,7 +1158,7 @@ static HID_NOINLINE int hid_host_setup_iface(struct hid_host_data *const data,
 }
 
 /* Fetch and parse the report descriptor for a report-protocol interface. */
-static HID_NOINLINE int hid_setup_generic(struct hid_host_data *const data,
+static int hid_setup_generic(struct hid_host_data *const data,
 					  struct usb_device *const udev,
 					  const uint8_t iface, uint16_t rdlen)
 {
