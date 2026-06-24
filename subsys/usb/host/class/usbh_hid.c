@@ -56,6 +56,8 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
 
 /* Consumer Controls usage page (HID Usage Tables); not in hid.h. */
 #define HID_USAGE_CONSUMER 0x0C
+/* Vendor-defined usage page range (HID Usage Tables): 0xFF00-0xFFFF. */
+#define HID_USAGE_PAGE_VENDOR_MIN 0xFF00
 
 /* Boot keyboard input report: [modifiers][reserved][6 keycodes]. */
 #define HID_KBD_REPORT_SIZE  8
@@ -200,6 +202,7 @@ struct hid_host_data {
 	uint8_t n_fields;
 	uint8_t n_reports;
 	uint8_t max_report_len; /* wire length of the largest input report */
+	uint16_t app_page;      /* application-collection usage page (for vendor detection) */
 	struct hid_field fields[CONFIG_USBH_HID_MAX_FIELDS];
 	struct hid_report_cache reports[CONFIG_USBH_HID_MAX_REPORTS];
 };
@@ -903,6 +906,7 @@ static __noinline void hid_parse_report_desc(struct hid_host_data *const data,
 	}
 	data->max_report_len =
 		(uint8_t)MIN(maxlen, (uint16_t)(CONFIG_USBH_HID_MAX_REPORT_SIZE + 1));
+	data->app_page = app_page;
 }
 
 /*
@@ -1252,7 +1256,12 @@ static int hid_setup_generic(struct hid_host_data *const data, struct usb_device
 		return ret;
 	}
 	if (data->n_fields == 0) {
-		LOG_WRN("interface %u: no mappable input fields", iface);
+		if (data->app_page >= HID_USAGE_PAGE_VENDOR_MIN) {
+			LOG_INF("interface %u: vendor interface (usage page 0x%04x), no input mapping",
+				iface, data->app_page);
+		} else {
+			LOG_WRN("interface %u: no mappable input fields", iface);
+		}
 	}
 
 	return 0;
