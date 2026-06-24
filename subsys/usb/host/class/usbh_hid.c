@@ -42,9 +42,9 @@
 LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
 
 /* HID class-specific requests (HID 1.11 §7.2) on the interface recipient. */
-#define HID_REQTYPE_SET		(USB_REQTYPE_DIR_TO_DEVICE << 7 |	\
-				 USB_REQTYPE_TYPE_CLASS << 5 |		\
-				 USB_REQTYPE_RECIPIENT_INTERFACE)
+#define HID_REQTYPE_SET                                                                            \
+	(USB_REQTYPE_DIR_TO_DEVICE << 7 | USB_REQTYPE_TYPE_CLASS << 5 |                            \
+	 USB_REQTYPE_RECIPIENT_INTERFACE)
 
 /*
  * Standard GET_DESCRIPTOR on the interface recipient. The HID report descriptor
@@ -52,24 +52,23 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
  * standard, recipient interface), wIndex = interface number. (usbh_req_desc()
  * cannot be used here: it hardcodes the device recipient.)
  */
-#define HID_REQTYPE_GET_DESC	(USB_REQTYPE_DIR_TO_HOST << 7 |		\
-				 USB_REQTYPE_RECIPIENT_INTERFACE)
+#define HID_REQTYPE_GET_DESC (USB_REQTYPE_DIR_TO_HOST << 7 | USB_REQTYPE_RECIPIENT_INTERFACE)
 
 /* Consumer Controls usage page (HID Usage Tables); not in hid.h. */
-#define HID_USAGE_CONSUMER	0x0C
+#define HID_USAGE_CONSUMER 0x0C
 
 /* Boot keyboard input report: [modifiers][reserved][6 keycodes]. */
-#define HID_KBD_REPORT_SIZE	8
-#define HID_KBD_NUM_KEYS	6
+#define HID_KBD_REPORT_SIZE  8
+#define HID_KBD_NUM_KEYS     6
 /* Boot mouse input report: [buttons][dx][dy](+[wheel]). */
-#define HID_MOUSE_REPORT_MIN	3
+#define HID_MOUSE_REPORT_MIN 3
 
 /* Interrupt-IN transfers kept queued on the endpoint. */
-#define HID_HOST_QUEUE_DEPTH	2
+#define HID_HOST_QUEUE_DEPTH 2
 
 /* Generic-parser limits. */
-#define HID_FIELD_USAGES_MAX	6	/* explicit usages captured per field */
-#define HID_GLOBAL_STACK_DEPTH	4	/* HID Push/Pop nesting */
+#define HID_FIELD_USAGES_MAX   6 /* explicit usages captured per field */
+#define HID_GLOBAL_STACK_DEPTH 4 /* HID Push/Pop nesting */
 /*
  * Keep the report-descriptor parser out of probe()'s own stack frame. The usbh
  * bus thread has a small stack (CONFIG_USBH_STACK_SIZE, 1 KB by default), and the
@@ -80,7 +79,7 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
  * chain. The setup helpers carry no large scratch and inline into probe() for
  * free, so only the parser needs this.
  */
-#define HID_NOINLINE	__attribute__((noinline))
+#define HID_NOINLINE           __attribute__((noinline))
 
 /*
  * HID Keyboard/Keypad usage (page 0x07) -> Zephyr input key code. Covers the
@@ -88,68 +87,52 @@ LOG_MODULE_REGISTER(usbh_hid, CONFIG_USBH_HID_LOG_LEVEL);
  * HID-usage to evdev keycode mapping used by Linux hid-input.
  */
 static const uint16_t hid_kbd_keymap[] = {
-	[0x04] = INPUT_KEY_A,         [0x05] = INPUT_KEY_B,
-	[0x06] = INPUT_KEY_C,         [0x07] = INPUT_KEY_D,
-	[0x08] = INPUT_KEY_E,         [0x09] = INPUT_KEY_F,
-	[0x0a] = INPUT_KEY_G,         [0x0b] = INPUT_KEY_H,
-	[0x0c] = INPUT_KEY_I,         [0x0d] = INPUT_KEY_J,
-	[0x0e] = INPUT_KEY_K,         [0x0f] = INPUT_KEY_L,
-	[0x10] = INPUT_KEY_M,         [0x11] = INPUT_KEY_N,
-	[0x12] = INPUT_KEY_O,         [0x13] = INPUT_KEY_P,
-	[0x14] = INPUT_KEY_Q,         [0x15] = INPUT_KEY_R,
-	[0x16] = INPUT_KEY_S,         [0x17] = INPUT_KEY_T,
-	[0x18] = INPUT_KEY_U,         [0x19] = INPUT_KEY_V,
-	[0x1a] = INPUT_KEY_W,         [0x1b] = INPUT_KEY_X,
-	[0x1c] = INPUT_KEY_Y,         [0x1d] = INPUT_KEY_Z,
-	[0x1e] = INPUT_KEY_1,         [0x1f] = INPUT_KEY_2,
-	[0x20] = INPUT_KEY_3,         [0x21] = INPUT_KEY_4,
-	[0x22] = INPUT_KEY_5,         [0x23] = INPUT_KEY_6,
-	[0x24] = INPUT_KEY_7,         [0x25] = INPUT_KEY_8,
-	[0x26] = INPUT_KEY_9,         [0x27] = INPUT_KEY_0,
-	[0x28] = INPUT_KEY_ENTER,     [0x29] = INPUT_KEY_ESC,
-	[0x2a] = INPUT_KEY_BACKSPACE, [0x2b] = INPUT_KEY_TAB,
-	[0x2c] = INPUT_KEY_SPACE,     [0x2d] = INPUT_KEY_MINUS,
-	[0x2e] = INPUT_KEY_EQUAL,     [0x2f] = INPUT_KEY_LEFTBRACE,
-	[0x30] = INPUT_KEY_RIGHTBRACE,[0x31] = INPUT_KEY_BACKSLASH,
-	[0x32] = INPUT_KEY_BACKSLASH, [0x33] = INPUT_KEY_SEMICOLON,
-	[0x34] = INPUT_KEY_APOSTROPHE,[0x35] = INPUT_KEY_GRAVE,
-	[0x36] = INPUT_KEY_COMMA,     [0x37] = INPUT_KEY_DOT,
-	[0x38] = INPUT_KEY_SLASH,     [0x39] = INPUT_KEY_CAPSLOCK,
-	[0x3a] = INPUT_KEY_F1,        [0x3b] = INPUT_KEY_F2,
-	[0x3c] = INPUT_KEY_F3,        [0x3d] = INPUT_KEY_F4,
-	[0x3e] = INPUT_KEY_F5,        [0x3f] = INPUT_KEY_F6,
-	[0x40] = INPUT_KEY_F7,        [0x41] = INPUT_KEY_F8,
-	[0x42] = INPUT_KEY_F9,        [0x43] = INPUT_KEY_F10,
-	[0x44] = INPUT_KEY_F11,       [0x45] = INPUT_KEY_F12,
-	[0x46] = INPUT_KEY_SYSRQ,     [0x47] = INPUT_KEY_SCROLLLOCK,
-	[0x48] = INPUT_KEY_PAUSE,     [0x49] = INPUT_KEY_INSERT,
-	[0x4a] = INPUT_KEY_HOME,      [0x4b] = INPUT_KEY_PAGEUP,
-	[0x4c] = INPUT_KEY_DELETE,    [0x4d] = INPUT_KEY_END,
-	[0x4e] = INPUT_KEY_PAGEDOWN,  [0x4f] = INPUT_KEY_RIGHT,
-	[0x50] = INPUT_KEY_LEFT,      [0x51] = INPUT_KEY_DOWN,
-	[0x52] = INPUT_KEY_UP,        [0x53] = INPUT_KEY_NUMLOCK,
-	[0x54] = INPUT_KEY_KPSLASH,   [0x55] = INPUT_KEY_KPASTERISK,
-	[0x56] = INPUT_KEY_KPMINUS,   [0x57] = INPUT_KEY_KPPLUS,
-	[0x58] = INPUT_KEY_KPENTER,   [0x59] = INPUT_KEY_KP1,
-	[0x5a] = INPUT_KEY_KP2,       [0x5b] = INPUT_KEY_KP3,
-	[0x5c] = INPUT_KEY_KP4,       [0x5d] = INPUT_KEY_KP5,
-	[0x5e] = INPUT_KEY_KP6,       [0x5f] = INPUT_KEY_KP7,
-	[0x60] = INPUT_KEY_KP8,       [0x61] = INPUT_KEY_KP9,
-	[0x62] = INPUT_KEY_KP0,       [0x63] = INPUT_KEY_KPDOT,
+	[0x04] = INPUT_KEY_A,          [0x05] = INPUT_KEY_B,          [0x06] = INPUT_KEY_C,
+	[0x07] = INPUT_KEY_D,          [0x08] = INPUT_KEY_E,          [0x09] = INPUT_KEY_F,
+	[0x0a] = INPUT_KEY_G,          [0x0b] = INPUT_KEY_H,          [0x0c] = INPUT_KEY_I,
+	[0x0d] = INPUT_KEY_J,          [0x0e] = INPUT_KEY_K,          [0x0f] = INPUT_KEY_L,
+	[0x10] = INPUT_KEY_M,          [0x11] = INPUT_KEY_N,          [0x12] = INPUT_KEY_O,
+	[0x13] = INPUT_KEY_P,          [0x14] = INPUT_KEY_Q,          [0x15] = INPUT_KEY_R,
+	[0x16] = INPUT_KEY_S,          [0x17] = INPUT_KEY_T,          [0x18] = INPUT_KEY_U,
+	[0x19] = INPUT_KEY_V,          [0x1a] = INPUT_KEY_W,          [0x1b] = INPUT_KEY_X,
+	[0x1c] = INPUT_KEY_Y,          [0x1d] = INPUT_KEY_Z,          [0x1e] = INPUT_KEY_1,
+	[0x1f] = INPUT_KEY_2,          [0x20] = INPUT_KEY_3,          [0x21] = INPUT_KEY_4,
+	[0x22] = INPUT_KEY_5,          [0x23] = INPUT_KEY_6,          [0x24] = INPUT_KEY_7,
+	[0x25] = INPUT_KEY_8,          [0x26] = INPUT_KEY_9,          [0x27] = INPUT_KEY_0,
+	[0x28] = INPUT_KEY_ENTER,      [0x29] = INPUT_KEY_ESC,        [0x2a] = INPUT_KEY_BACKSPACE,
+	[0x2b] = INPUT_KEY_TAB,        [0x2c] = INPUT_KEY_SPACE,      [0x2d] = INPUT_KEY_MINUS,
+	[0x2e] = INPUT_KEY_EQUAL,      [0x2f] = INPUT_KEY_LEFTBRACE,  [0x30] = INPUT_KEY_RIGHTBRACE,
+	[0x31] = INPUT_KEY_BACKSLASH,  [0x32] = INPUT_KEY_BACKSLASH,  [0x33] = INPUT_KEY_SEMICOLON,
+	[0x34] = INPUT_KEY_APOSTROPHE, [0x35] = INPUT_KEY_GRAVE,      [0x36] = INPUT_KEY_COMMA,
+	[0x37] = INPUT_KEY_DOT,        [0x38] = INPUT_KEY_SLASH,      [0x39] = INPUT_KEY_CAPSLOCK,
+	[0x3a] = INPUT_KEY_F1,         [0x3b] = INPUT_KEY_F2,         [0x3c] = INPUT_KEY_F3,
+	[0x3d] = INPUT_KEY_F4,         [0x3e] = INPUT_KEY_F5,         [0x3f] = INPUT_KEY_F6,
+	[0x40] = INPUT_KEY_F7,         [0x41] = INPUT_KEY_F8,         [0x42] = INPUT_KEY_F9,
+	[0x43] = INPUT_KEY_F10,        [0x44] = INPUT_KEY_F11,        [0x45] = INPUT_KEY_F12,
+	[0x46] = INPUT_KEY_SYSRQ,      [0x47] = INPUT_KEY_SCROLLLOCK, [0x48] = INPUT_KEY_PAUSE,
+	[0x49] = INPUT_KEY_INSERT,     [0x4a] = INPUT_KEY_HOME,       [0x4b] = INPUT_KEY_PAGEUP,
+	[0x4c] = INPUT_KEY_DELETE,     [0x4d] = INPUT_KEY_END,        [0x4e] = INPUT_KEY_PAGEDOWN,
+	[0x4f] = INPUT_KEY_RIGHT,      [0x50] = INPUT_KEY_LEFT,       [0x51] = INPUT_KEY_DOWN,
+	[0x52] = INPUT_KEY_UP,         [0x53] = INPUT_KEY_NUMLOCK,    [0x54] = INPUT_KEY_KPSLASH,
+	[0x55] = INPUT_KEY_KPASTERISK, [0x56] = INPUT_KEY_KPMINUS,    [0x57] = INPUT_KEY_KPPLUS,
+	[0x58] = INPUT_KEY_KPENTER,    [0x59] = INPUT_KEY_KP1,        [0x5a] = INPUT_KEY_KP2,
+	[0x5b] = INPUT_KEY_KP3,        [0x5c] = INPUT_KEY_KP4,        [0x5d] = INPUT_KEY_KP5,
+	[0x5e] = INPUT_KEY_KP6,        [0x5f] = INPUT_KEY_KP7,        [0x60] = INPUT_KEY_KP8,
+	[0x61] = INPUT_KEY_KP9,        [0x62] = INPUT_KEY_KP0,        [0x63] = INPUT_KEY_KPDOT,
 	[0x65] = INPUT_KEY_COMPOSE,
 };
 
 /* Boot keyboard modifier byte (report[0]) bit -> input key code. */
 static const uint16_t hid_kbd_modmap[8] = {
-	INPUT_KEY_LEFTCTRL,  INPUT_KEY_LEFTSHIFT,
-	INPUT_KEY_LEFTALT,   INPUT_KEY_LEFTMETA,
-	INPUT_KEY_RIGHTCTRL, INPUT_KEY_RIGHTSHIFT,
-	INPUT_KEY_RIGHTALT,  INPUT_KEY_RIGHTMETA,
+	INPUT_KEY_LEFTCTRL,  INPUT_KEY_LEFTSHIFT,  INPUT_KEY_LEFTALT,  INPUT_KEY_LEFTMETA,
+	INPUT_KEY_RIGHTCTRL, INPUT_KEY_RIGHTSHIFT, INPUT_KEY_RIGHTALT, INPUT_KEY_RIGHTMETA,
 };
 
 /* Boot mouse button byte bit -> input button code. */
 static const uint16_t hid_mouse_btnmap[3] = {
-	INPUT_BTN_LEFT, INPUT_BTN_RIGHT, INPUT_BTN_MIDDLE,
+	INPUT_BTN_LEFT,
+	INPUT_BTN_RIGHT,
+	INPUT_BTN_MIDDLE,
 };
 
 /* Button namespace, selected from the enclosing application collection. */
@@ -161,32 +144,32 @@ enum hid_btn_ns {
 };
 
 /* Parsed Input field flags. */
-#define HID_FIELD_VAR	BIT(0)	/* variable (1) vs array (0) */
-#define HID_FIELD_REL	BIT(1)	/* relative (1) vs absolute (0) */
-#define HID_FIELD_NULL	BIT(2)	/* null state: ignore out-of-range values (§5.10) */
+#define HID_FIELD_VAR  BIT(0) /* variable (1) vs array (0) */
+#define HID_FIELD_REL  BIT(1) /* relative (1) vs absolute (0) */
+#define HID_FIELD_NULL BIT(2) /* null state: ignore out-of-range values (§5.10) */
 
 /* One parsed, mappable Input field from the report descriptor. */
 struct hid_field {
-	uint16_t bit_offset;	/* bit position within the report payload */
+	uint16_t bit_offset; /* bit position within the report payload */
 	uint16_t usage_page;
-	uint16_t usage_min;	/* usage range start (when has_range) */
-	uint16_t usage_max;	/* usage range end (when has_range) */
-	uint16_t usages[HID_FIELD_USAGES_MAX];	/* explicit usage list */
-	int32_t  logical_min;	/* <0 means the field is signed */
-	int32_t  logical_max;	/* upper bound (null-state range check) */
-	uint8_t  report_id;
-	uint8_t  size;		/* bits per item */
-	uint8_t  count;		/* number of items */
-	uint8_t  flags;		/* HID_FIELD_* */
-	uint8_t  n_usages;
-	uint8_t  has_range;
-	uint8_t  btn_ns;	/* enum hid_btn_ns */
+	uint16_t usage_min;                    /* usage range start (when has_range) */
+	uint16_t usage_max;                    /* usage range end (when has_range) */
+	uint16_t usages[HID_FIELD_USAGES_MAX]; /* explicit usage list */
+	int32_t logical_min;                   /* <0 means the field is signed */
+	int32_t logical_max;                   /* upper bound (null-state range check) */
+	uint8_t report_id;
+	uint8_t size;  /* bits per item */
+	uint8_t count; /* number of items */
+	uint8_t flags; /* HID_FIELD_* */
+	uint8_t n_usages;
+	uint8_t has_range;
+	uint8_t btn_ns; /* enum hid_btn_ns */
 };
 
 /* Previous payload of a report id, for change detection on the next report. */
 struct hid_report_cache {
 	uint8_t id;
-	uint8_t len;		/* cached payload bytes */
+	uint8_t len; /* cached payload bytes */
 	uint8_t have;
 	uint8_t buf[CONFIG_USBH_HID_MAX_REPORT_SIZE];
 };
@@ -201,12 +184,12 @@ struct hid_host_data {
 	/* Serializes probe/removed against the completion cb. */
 	struct k_mutex lock;
 	uint8_t iface;
-	uint8_t subclass;		/* bInterfaceSubClass */
-	uint8_t proto;			/* HID_BOOT_IFACE_CODE_KEYBOARD/_MOUSE */
-	uint8_t ep_addr;		/* interrupt-IN endpoint */
+	uint8_t subclass; /* bInterfaceSubClass */
+	uint8_t proto;    /* HID_BOOT_IFACE_CODE_KEYBOARD/_MOUSE */
+	uint8_t ep_addr;  /* interrupt-IN endpoint */
 	uint16_t ep_mps;
 	atomic_t connected;
-	bool boot_fallback;		/* decode the fixed boot layout (fallback) */
+	bool boot_fallback; /* decode the fixed boot layout (fallback) */
 	bool uses_report_ids;
 	/* Boot keyboard diff state. */
 	uint8_t prev_keys[HID_KBD_NUM_KEYS];
@@ -216,7 +199,7 @@ struct hid_host_data {
 	/* Parsed report model (report-protocol path). */
 	uint8_t n_fields;
 	uint8_t n_reports;
-	uint8_t max_report_len;		/* wire length of the largest input report */
+	uint8_t max_report_len; /* wire length of the largest input report */
 	struct hid_field fields[CONFIG_USBH_HID_MAX_FIELDS];
 	struct hid_report_cache reports[CONFIG_USBH_HID_MAX_REPORTS];
 };
@@ -261,21 +244,36 @@ static int32_t hid_extract_signed(const uint8_t *const data, uint16_t bit_off, u
 static uint16_t hid_consumer_keycode(uint16_t usage)
 {
 	switch (usage) {
-	case 0x0b0: return INPUT_KEY_PLAY;
-	case 0x0b1: return INPUT_KEY_PAUSE;
-	case 0x0b3: return INPUT_KEY_FASTFORWARD;
-	case 0x0b4: return INPUT_KEY_REWIND;
-	case 0x0b5: return INPUT_KEY_NEXTSONG;
-	case 0x0b6: return INPUT_KEY_PREVIOUSSONG;
-	case 0x0b7: return INPUT_KEY_STOPCD;
-	case 0x0b8: return INPUT_KEY_EJECTCD;
-	case 0x0cd: return INPUT_KEY_PLAYPAUSE;
-	case 0x0e2: return INPUT_KEY_MUTE;
-	case 0x0e9: return INPUT_KEY_VOLUMEUP;
-	case 0x0ea: return INPUT_KEY_VOLUMEDOWN;
-	case 0x224: return INPUT_KEY_BACK;
-	case 0x225: return INPUT_KEY_FORWARD;
-	default:    return 0;
+	case 0x0b0:
+		return INPUT_KEY_PLAY;
+	case 0x0b1:
+		return INPUT_KEY_PAUSE;
+	case 0x0b3:
+		return INPUT_KEY_FASTFORWARD;
+	case 0x0b4:
+		return INPUT_KEY_REWIND;
+	case 0x0b5:
+		return INPUT_KEY_NEXTSONG;
+	case 0x0b6:
+		return INPUT_KEY_PREVIOUSSONG;
+	case 0x0b7:
+		return INPUT_KEY_STOPCD;
+	case 0x0b8:
+		return INPUT_KEY_EJECTCD;
+	case 0x0cd:
+		return INPUT_KEY_PLAYPAUSE;
+	case 0x0e2:
+		return INPUT_KEY_MUTE;
+	case 0x0e9:
+		return INPUT_KEY_VOLUMEUP;
+	case 0x0ea:
+		return INPUT_KEY_VOLUMEDOWN;
+	case 0x224:
+		return INPUT_KEY_BACK;
+	case 0x225:
+		return INPUT_KEY_FORWARD;
+	default:
+		return 0;
 	}
 }
 
@@ -284,24 +282,52 @@ static uint16_t hid_consumer_keycode(uint16_t usage)
  * REL vs ABS for axes; `btn_ns` picks the button namespace. Returns false for
  * usages this driver does not translate.
  */
-static bool hid_map_usage(uint16_t page, uint16_t usage, bool relative,
-			  uint8_t btn_ns, uint8_t *const type, uint16_t *const code)
+static bool hid_map_usage(uint16_t page, uint16_t usage, bool relative, uint8_t btn_ns,
+			  uint8_t *const type, uint16_t *const code)
 {
 	switch (page) {
 	case HID_USAGE_GEN_DESKTOP: {
 		uint16_t rel_code, abs_code;
 
 		switch (usage) {
-		case HID_USAGE_GEN_DESKTOP_X:	  rel_code = INPUT_REL_X;  abs_code = INPUT_ABS_X;  break;
-		case HID_USAGE_GEN_DESKTOP_Y:	  rel_code = INPUT_REL_Y;  abs_code = INPUT_ABS_Y;  break;
-		case 0x32: /* Z */		  rel_code = INPUT_REL_Z;  abs_code = INPUT_ABS_Z;  break;
-		case 0x33: /* Rx */		  rel_code = INPUT_REL_RX; abs_code = INPUT_ABS_RX; break;
-		case 0x34: /* Ry */		  rel_code = INPUT_REL_RY; abs_code = INPUT_ABS_RY; break;
-		case 0x35: /* Rz */		  rel_code = INPUT_REL_RZ; abs_code = INPUT_ABS_RZ; break;
-		case 0x36: /* Slider */		  rel_code = INPUT_REL_MISC; abs_code = INPUT_ABS_THROTTLE; break;
-		case 0x37: /* Dial */		  rel_code = INPUT_REL_DIAL; abs_code = INPUT_ABS_WHEEL; break;
-		case HID_USAGE_GEN_DESKTOP_WHEEL: rel_code = INPUT_REL_WHEEL; abs_code = INPUT_ABS_WHEEL; break;
-		default: return false;
+		case HID_USAGE_GEN_DESKTOP_X:
+			rel_code = INPUT_REL_X;
+			abs_code = INPUT_ABS_X;
+			break;
+		case HID_USAGE_GEN_DESKTOP_Y:
+			rel_code = INPUT_REL_Y;
+			abs_code = INPUT_ABS_Y;
+			break;
+		case 0x32: /* Z */
+			rel_code = INPUT_REL_Z;
+			abs_code = INPUT_ABS_Z;
+			break;
+		case 0x33: /* Rx */
+			rel_code = INPUT_REL_RX;
+			abs_code = INPUT_ABS_RX;
+			break;
+		case 0x34: /* Ry */
+			rel_code = INPUT_REL_RY;
+			abs_code = INPUT_ABS_RY;
+			break;
+		case 0x35: /* Rz */
+			rel_code = INPUT_REL_RZ;
+			abs_code = INPUT_ABS_RZ;
+			break;
+		case 0x36: /* Slider */
+			rel_code = INPUT_REL_MISC;
+			abs_code = INPUT_ABS_THROTTLE;
+			break;
+		case 0x37: /* Dial */
+			rel_code = INPUT_REL_DIAL;
+			abs_code = INPUT_ABS_WHEEL;
+			break;
+		case HID_USAGE_GEN_DESKTOP_WHEEL:
+			rel_code = INPUT_REL_WHEEL;
+			abs_code = INPUT_ABS_WHEEL;
+			break;
+		default:
+			return false;
 		}
 
 		*type = relative ? INPUT_EV_REL : INPUT_EV_ABS;
@@ -560,8 +586,8 @@ static void hid_mouse_decode(struct hid_host_data *const data, const uint8_t *re
 
 	/* Emit the batch, marking only the last event as the report sync point. */
 	for (int i = 0; i < n; i++) {
-		input_report(data->dev, evt[i].type, evt[i].code, evt[i].value,
-			     i == n - 1, K_NO_WAIT);
+		input_report(data->dev, evt[i].type, evt[i].code, evt[i].value, i == n - 1,
+			     K_NO_WAIT);
 	}
 }
 
@@ -584,20 +610,20 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 	} g = {0};
 	/* SoA push/pop backup stack: parallel arrays avoid per-element padding. */
 	uint16_t st_usage_page[HID_GLOBAL_STACK_DEPTH];
-	int32_t  st_logical_min[HID_GLOBAL_STACK_DEPTH];
-	int32_t  st_logical_max[HID_GLOBAL_STACK_DEPTH];
-	uint8_t  st_report_size[HID_GLOBAL_STACK_DEPTH];
-	uint8_t  st_report_count[HID_GLOBAL_STACK_DEPTH];
-	uint8_t  st_report_id[HID_GLOBAL_STACK_DEPTH];
+	int32_t st_logical_min[HID_GLOBAL_STACK_DEPTH];
+	int32_t st_logical_max[HID_GLOBAL_STACK_DEPTH];
+	uint8_t st_report_size[HID_GLOBAL_STACK_DEPTH];
+	uint8_t st_report_count[HID_GLOBAL_STACK_DEPTH];
+	uint8_t st_report_id[HID_GLOBAL_STACK_DEPTH];
 	int gsp = 0;
 
 	uint16_t usages[HID_FIELD_USAGES_MAX];
 	uint8_t n_usages = 0;
 	uint16_t usage_min = 0, usage_max = 0;
 	bool has_range = false;
-	uint16_t ext_page = 0;		/* extended-usage page override (item bSize=4) */
-	bool in_delim = false;		/* inside a Delimiter alias set */
-	bool delim_took = false;	/* already captured this set's first usage */
+	uint16_t ext_page = 0;   /* extended-usage page override (item bSize=4) */
+	bool in_delim = false;   /* inside a Delimiter alias set */
+	bool delim_took = false; /* already captured this set's first usage */
 
 	uint16_t app_page = 0, app_usage = 0;
 
@@ -619,7 +645,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 		uint32_t uval = 0;
 		int32_t sval;
 
-		if (b0 == 0xfe) {	/* long item: 0xFE, bDataSize, bTag, data... */
+		if (b0 == 0xfe) { /* long item: 0xFE, bDataSize, bTag, data... */
 			if (i + 1 >= rd_len) {
 				break;
 			}
@@ -668,7 +694,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 			case HID_ITEM_TAG_REPORT_COUNT:
 				g.report_count = (uint8_t)uval;
 				break;
-			case 0x0a:	/* Push */
+			case 0x0a: /* Push */
 				if (gsp < HID_GLOBAL_STACK_DEPTH) {
 					st_usage_page[gsp] = g.usage_page;
 					st_logical_min[gsp] = g.logical_min;
@@ -679,7 +705,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 					gsp++;
 				}
 				break;
-			case 0x0b:	/* Pop */
+			case 0x0b: /* Pop */
 				if (gsp > 0) {
 					gsp--;
 					g.usage_page = st_usage_page[gsp];
@@ -733,7 +759,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 					has_range = true;
 				}
 				break;
-			case 0x0a:	/* Delimiter (§6.2.2.8). */
+			case 0x0a: /* Delimiter (§6.2.2.8). */
 				if (uval == 1) {
 					in_delim = true;
 					delim_took = false;
@@ -752,7 +778,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 				if ((uint8_t)uval == HID_COLLECTION_APPLICATION) {
 					app_page = ext_page ? ext_page : g.usage_page;
 					app_usage = (n_usages > 0) ? usages[0]
-						  : (has_range ? usage_min : 0);
+								   : (has_range ? usage_min : 0);
 				}
 				break;
 			case HID_ITEM_TAG_INPUT: {
@@ -774,8 +800,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 				off = (ri >= 0) ? rbits[ri].bits : 0;
 
 				/* Store mappable, non-constant Input fields. */
-				if (!(uval & 0x01) &&
-				    data->n_fields < CONFIG_USBH_HID_MAX_FIELDS &&
+				if (!(uval & 0x01) && data->n_fields < CONFIG_USBH_HID_MAX_FIELDS &&
 				    (eff_page == HID_USAGE_GEN_DESKTOP ||
 				     eff_page == HID_USAGE_GEN_KEYBOARD ||
 				     eff_page == HID_USAGE_GEN_BUTTON ||
@@ -827,7 +852,7 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 				}
 				break;
 			}
-			default:	/* OUTPUT, FEATURE, END_COLLECTION, ... */
+			default: /* OUTPUT, FEATURE, END_COLLECTION, ... */
 				break;
 			}
 
@@ -867,8 +892,8 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 	if (data->uses_report_ids) {
 		maxlen += 1;
 	}
-	data->max_report_len = (uint8_t)MIN(maxlen,
-				(uint16_t)(CONFIG_USBH_HID_MAX_REPORT_SIZE + 1));
+	data->max_report_len =
+		(uint8_t)MIN(maxlen, (uint16_t)(CONFIG_USBH_HID_MAX_REPORT_SIZE + 1));
 }
 
 /*
@@ -880,8 +905,7 @@ static void hid_emit(const struct device *dev, struct hid_input_evt *const pendi
 		     bool *const have, uint8_t type, uint16_t code, int32_t value)
 {
 	if (*have) {
-		input_report(dev, pending->type, pending->code, pending->value,
-			     false, K_NO_WAIT);
+		input_report(dev, pending->type, pending->code, pending->value, false, K_NO_WAIT);
 	}
 	pending->type = type;
 	pending->code = code;
@@ -890,8 +914,8 @@ static void hid_emit(const struct device *dev, struct hid_input_evt *const pendi
 }
 
 /* Translate one report-protocol report into input events using the parsed model. */
-static void hid_generic_decode(struct hid_host_data *const data,
-			       const uint8_t *const report, const size_t len)
+static void hid_generic_decode(struct hid_host_data *const data, const uint8_t *const report,
+			       const size_t len)
 {
 	struct hid_input_evt pending;
 	bool have_pending = false;
@@ -927,7 +951,7 @@ static void hid_generic_decode(struct hid_host_data *const data,
 			continue;
 		}
 		if ((size_t)f->bit_offset + (size_t)f->size * f->count > paylen * 8) {
-			continue;	/* report shorter than this field */
+			continue; /* report shorter than this field */
 		}
 
 		if (f->flags & HID_FIELD_VAR) {
@@ -938,16 +962,19 @@ static void hid_generic_decode(struct hid_host_data *const data,
 				uint16_t code;
 
 				if (usage == 0 ||
-				    !hid_map_usage(f->usage_page, usage,
-						   f->flags & HID_FIELD_REL, f->btn_ns,
-						   &type, &code)) {
+				    !hid_map_usage(f->usage_page, usage, f->flags & HID_FIELD_REL,
+						   f->btn_ns, &type, &code)) {
 					continue;
 				}
 
 				if (type == INPUT_EV_KEY) {
 					int v = hid_extract_bits(payload, bit, f->size) ? 1 : 0;
-					int pv = (cache && cache->have) ?
-						 (hid_extract_bits(cache->buf, bit, f->size) ? 1 : 0) : 0;
+					int pv = (cache && cache->have)
+							 ? (hid_extract_bits(cache->buf, bit,
+									     f->size)
+								    ? 1
+								    : 0)
+							 : 0;
 
 					if (v != pv) {
 						hid_emit(data->dev, &pending, &have_pending,
@@ -960,15 +987,21 @@ static void hid_generic_decode(struct hid_host_data *const data,
 						hid_emit(data->dev, &pending, &have_pending,
 							 INPUT_EV_REL, code, v);
 					}
-				} else {	/* INPUT_EV_ABS */
+				} else { /* INPUT_EV_ABS */
 					bool have_pv = cache && cache->have;
-					int32_t v = (f->logical_min < 0) ?
-						hid_extract_signed(payload, bit, f->size) :
-						(int32_t)hid_extract_bits(payload, bit, f->size);
-					int32_t pv = have_pv ?
-						((f->logical_min < 0) ?
-						 hid_extract_signed(cache->buf, bit, f->size) :
-						 (int32_t)hid_extract_bits(cache->buf, bit, f->size)) : 0;
+					int32_t v =
+						(f->logical_min < 0)
+							? hid_extract_signed(payload, bit, f->size)
+							: (int32_t)hid_extract_bits(payload, bit,
+										    f->size);
+					int32_t pv = have_pv ? ((f->logical_min < 0)
+									? hid_extract_signed(
+										  cache->buf, bit,
+										  f->size)
+									: (int32_t)hid_extract_bits(
+										  cache->buf, bit,
+										  f->size))
+							     : 0;
 
 					/*
 					 * Null-state field (§5.10): a value outside
@@ -991,8 +1024,9 @@ static void hid_generic_decode(struct hid_host_data *const data,
 			/* Array field: each item is a usage code; diff sets. */
 			if (cache && cache->have) {
 				for (uint8_t k = 0; k < f->count; k++) {
-					uint32_t old = hid_extract_bits(cache->buf,
-						f->bit_offset + (uint16_t)k * f->size, f->size);
+					uint32_t old = hid_extract_bits(
+						cache->buf, f->bit_offset + (uint16_t)k * f->size,
+						f->size);
 					bool still = false;
 					uint8_t type;
 					uint16_t code;
@@ -1002,8 +1036,9 @@ static void hid_generic_decode(struct hid_host_data *const data,
 					}
 					for (uint8_t j = 0; j < f->count; j++) {
 						if (hid_extract_bits(payload,
-							f->bit_offset + (uint16_t)j * f->size,
-							f->size) == old) {
+								     f->bit_offset +
+									     (uint16_t)j * f->size,
+								     f->size) == old) {
 							still = true;
 							break;
 						}
@@ -1018,8 +1053,8 @@ static void hid_generic_decode(struct hid_host_data *const data,
 				}
 			}
 			for (uint8_t k = 0; k < f->count; k++) {
-				uint32_t nv = hid_extract_bits(payload,
-					f->bit_offset + (uint16_t)k * f->size, f->size);
+				uint32_t nv = hid_extract_bits(
+					payload, f->bit_offset + (uint16_t)k * f->size, f->size);
 				bool had = false;
 				uint8_t type;
 				uint16_t code;
@@ -1030,19 +1065,20 @@ static void hid_generic_decode(struct hid_host_data *const data,
 				if (cache && cache->have) {
 					for (uint8_t j = 0; j < f->count; j++) {
 						if (hid_extract_bits(cache->buf,
-							f->bit_offset + (uint16_t)j * f->size,
-							f->size) == nv) {
+								     f->bit_offset +
+									     (uint16_t)j * f->size,
+								     f->size) == nv) {
 							had = true;
 							break;
 						}
 					}
 				}
 				if (!had &&
-				    hid_map_usage(f->usage_page, (uint16_t)nv, false,
-						  f->btn_ns, &type, &code) &&
+				    hid_map_usage(f->usage_page, (uint16_t)nv, false, f->btn_ns,
+						  &type, &code) &&
 				    type == INPUT_EV_KEY) {
-					hid_emit(data->dev, &pending, &have_pending,
-						 INPUT_EV_KEY, code, 1);
+					hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+						 code, 1);
 				}
 			}
 		}
@@ -1050,8 +1086,7 @@ static void hid_generic_decode(struct hid_host_data *const data,
 
 	/* The report's final event carries the sync flag. */
 	if (have_pending) {
-		input_report(data->dev, pending.type, pending.code, pending.value,
-			     true, K_NO_WAIT);
+		input_report(data->dev, pending.type, pending.code, pending.value, true, K_NO_WAIT);
 	}
 
 	if (cache != NULL) {
@@ -1127,9 +1162,8 @@ static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer
  * class descriptor 0x21). Per-interface, so multi-interface devices bind each
  * interface independently.
  */
-static int hid_host_setup_iface(struct hid_host_data *const data,
-					     struct usb_device *const udev,
-					     const uint8_t iface, uint16_t *const rdlen)
+static int hid_host_setup_iface(struct hid_host_data *const data, struct usb_device *const udev,
+				const uint8_t iface, uint16_t *const rdlen)
 {
 	const struct usb_if_descriptor *if_desc;
 	const struct usb_desc_header *desc;
@@ -1159,8 +1193,7 @@ static int hid_host_setup_iface(struct hid_host_data *const data,
 		}
 
 		if (usbh_desc_is_valid_endpoint(desc) && !have_ep) {
-			const struct usb_ep_descriptor *ep =
-				(const struct usb_ep_descriptor *)desc;
+			const struct usb_ep_descriptor *ep = (const struct usb_ep_descriptor *)desc;
 
 			if (USB_EP_DIR_IS_IN(ep->bEndpointAddress) &&
 			    (ep->bmAttributes & USB_EP_TRANSFER_TYPE_MASK) ==
@@ -1176,9 +1209,8 @@ static int hid_host_setup_iface(struct hid_host_data *const data,
 }
 
 /* Fetch and parse the report descriptor for a report-protocol interface. */
-static int hid_setup_generic(struct hid_host_data *const data,
-					  struct usb_device *const udev,
-					  const uint8_t iface, uint16_t rdlen)
+static int hid_setup_generic(struct hid_host_data *const data, struct usb_device *const udev,
+			     const uint8_t iface, uint16_t rdlen)
 {
 	struct net_buf *buf;
 	int ret;
@@ -1198,8 +1230,8 @@ static int hid_setup_generic(struct hid_host_data *const data,
 			     (USB_DESC_HID_REPORT << 8), iface, rdlen, buf);
 	if (ret == 0) {
 		hid_parse_report_desc(data, buf->data, buf->len);
-		LOG_INF("interface %u report desc %u bytes: %u field(s), %u report(s)%s",
-			iface, buf->len, data->n_fields, data->n_reports,
+		LOG_INF("interface %u report desc %u bytes: %u field(s), %u report(s)%s", iface,
+			buf->len, data->n_fields, data->n_reports,
 			data->uses_report_ids ? ", report IDs" : "");
 	} else {
 		LOG_ERR("GET report descriptor (interface %u) failed: %d", iface, ret);
@@ -1267,9 +1299,8 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	 * layout cannot. The boot decoders are a fallback, used only when a
 	 * boot-capable device offers no usable report descriptor.
 	 */
-	boot_capable = (data->subclass == 1 &&
-			(data->proto == HID_BOOT_IFACE_CODE_KEYBOARD ||
-			 data->proto == HID_BOOT_IFACE_CODE_MOUSE));
+	boot_capable = (data->subclass == 1 && (data->proto == HID_BOOT_IFACE_CODE_KEYBOARD ||
+						data->proto == HID_BOOT_IFACE_CODE_MOUSE));
 	data->boot_fallback = false;
 
 	if (boot_capable) {
@@ -1305,8 +1336,7 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	}
 
 	/* Idle 0: report only on change (best-effort; some devices STALL it). */
-	ret = usbh_req_setup(udev, HID_REQTYPE_SET, USB_HID_SET_IDLE,
-			     0, target_iface, 0, NULL);
+	ret = usbh_req_setup(udev, HID_REQTYPE_SET, USB_HID_SET_IDLE, 0, target_iface, 0, NULL);
 	if (ret != 0) {
 		LOG_WRN("SET_IDLE failed: %d", ret);
 	}
@@ -1321,8 +1351,9 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	}
 
 	LOG_INF("HID %s ready (addr %u, ep 0x%02x mps %u)",
-		data->boot_fallback ? (data->proto == HID_BOOT_IFACE_CODE_KEYBOARD ?
-			      "boot keyboard" : "boot mouse") : "report device",
+		data->boot_fallback ? (data->proto == HID_BOOT_IFACE_CODE_KEYBOARD ? "boot keyboard"
+										   : "boot mouse")
+				    : "report device",
 		udev->addr, data->ep_addr, data->ep_mps);
 
 	return 0;
@@ -1397,14 +1428,13 @@ static struct usbh_class_filter usbh_hid_filters[] = {
 	{0},
 };
 
-#define USBH_HID_DEVICE_DEFINE(n, _)						\
-	static struct hid_host_data hid_host_data##n;				\
-										\
-	DEVICE_DEFINE(usbh_hid_##n, "usbh_hid_" #n, NULL, NULL,			\
-		      &hid_host_data##n, NULL, POST_KERNEL,			\
-		      CONFIG_INPUT_INIT_PRIORITY, NULL);			\
-										\
-	USBH_DEFINE_CLASS(usbh_hid_c_data_##n, &usbh_hid_class_api,		\
+#define USBH_HID_DEVICE_DEFINE(n, _)                                                               \
+	static struct hid_host_data hid_host_data##n;                                              \
+                                                                                                   \
+	DEVICE_DEFINE(usbh_hid_##n, "usbh_hid_" #n, NULL, NULL, &hid_host_data##n, NULL,           \
+		      POST_KERNEL, CONFIG_INPUT_INIT_PRIORITY, NULL);                              \
+                                                                                                   \
+	USBH_DEFINE_CLASS(usbh_hid_c_data_##n, &usbh_hid_class_api,                                \
 			  (void *)DEVICE_GET(usbh_hid_##n), usbh_hid_filters);
 
 LISTIFY(CONFIG_USBH_HID_INSTANCES_COUNT, USBH_HID_DEVICE_DEFINE, (;), _)
