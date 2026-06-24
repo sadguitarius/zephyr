@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright 2026 The Zephyr Project Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config USBH_HID_CLASS
+	bool "USB host HID class support [EXPERIMENTAL]"
+	select EXPERIMENTAL
+	select INPUT
+	help
+	  USB Host HID class driver. Drives HID interfaces (mice, gamepads/joysticks,
+	  keyboards, consumer controls) via the report protocol by fetching and
+	  parsing their report descriptor; boot-capable keyboards and mice are
+	  switched to the report protocol too, and fall back to the fixed boot layout
+	  only when no usable report descriptor is present. Reports are translated
+	  into Zephyr input subsystem events; consumers bind to the per-instance input
+	  device with INPUT_CALLBACK_DEFINE().
+
+if USBH_HID_CLASS
+
+config USBH_HID_REPORT_DESC_MAX
+	int "Maximum HID report descriptor size"
+	default 256
+	help
+	  Largest HID report descriptor (in bytes) fetched and parsed per interface.
+	  Descriptors larger than this are fetched and parsed up to this limit.
+
+config USBH_HID_MAX_FIELDS
+	int "Maximum parsed input fields per interface"
+	default 24
+	help
+	  Maximum number of mappable Input fields kept from a parsed report
+	  descriptor. Fields beyond this are ignored.
+
+config USBH_HID_MAX_REPORTS
+	int "Maximum distinct report IDs per interface"
+	default 4
+	help
+	  Maximum number of distinct report IDs tracked per interface (each keeps a
+	  cached previous payload for change detection).
+
+config USBH_HID_MAX_REPORT_SIZE
+	int "Maximum input report payload size"
+	default 64
+	help
+	  Maximum input report payload (in bytes, excluding the report-ID byte) that
+	  is decoded and cached. Should be at least the largest interrupt-IN endpoint
+	  wMaxPacketSize in use (64 covers any full-speed HID endpoint); reports from
+	  an endpoint whose mps exceeds this are truncated (a warning is logged on
+	  probe). Must be at least 8 for boot keyboard reports.
+
+module = USBH_HID
+module-str = usbh hid
+default-count = 2
+source "subsys/logging/Kconfig.template.log_config"
+source "subsys/usb/common/Kconfig.template.instances_count"
+
+endif # USBH_HID_CLASS
