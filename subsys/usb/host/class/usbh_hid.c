@@ -582,7 +582,13 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 		uint8_t report_count;
 		uint8_t report_id;
 	} g = {0};
-	struct hid_global gstack[HID_GLOBAL_STACK_DEPTH];
+	/* SoA push/pop backup stack: parallel arrays avoid per-element padding. */
+	uint16_t st_usage_page[HID_GLOBAL_STACK_DEPTH];
+	int32_t  st_logical_min[HID_GLOBAL_STACK_DEPTH];
+	int32_t  st_logical_max[HID_GLOBAL_STACK_DEPTH];
+	uint8_t  st_report_size[HID_GLOBAL_STACK_DEPTH];
+	uint8_t  st_report_count[HID_GLOBAL_STACK_DEPTH];
+	uint8_t  st_report_id[HID_GLOBAL_STACK_DEPTH];
 	int gsp = 0;
 
 	uint16_t usages[HID_FIELD_USAGES_MAX];
@@ -664,12 +670,24 @@ static HID_NOINLINE void hid_parse_report_desc(struct hid_host_data *const data,
 				break;
 			case 0x0a:	/* Push */
 				if (gsp < HID_GLOBAL_STACK_DEPTH) {
-					gstack[gsp++] = g;
+					st_usage_page[gsp] = g.usage_page;
+					st_logical_min[gsp] = g.logical_min;
+					st_logical_max[gsp] = g.logical_max;
+					st_report_size[gsp] = g.report_size;
+					st_report_count[gsp] = g.report_count;
+					st_report_id[gsp] = g.report_id;
+					gsp++;
 				}
 				break;
 			case 0x0b:	/* Pop */
 				if (gsp > 0) {
-					g = gstack[--gsp];
+					gsp--;
+					g.usage_page = st_usage_page[gsp];
+					g.logical_min = st_logical_min[gsp];
+					g.logical_max = st_logical_max[gsp];
+					g.report_size = st_report_size[gsp];
+					g.report_count = st_report_count[gsp];
+					g.report_id = st_report_id[gsp];
 				}
 				break;
 			default:
