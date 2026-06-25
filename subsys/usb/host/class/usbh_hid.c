@@ -434,15 +434,15 @@ static int hid_host_arm(struct hid_host_data *const data)
 	k_mutex_lock(&data->lock, K_FOREVER);
 
 	if (!data->connected) {
-		k_mutex_unlock(&data->lock);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto unlock;
 	}
 	udev = data->udev;
 
 	xfer = usbh_xfer_alloc(udev, data->ep_addr, hid_host_report_cb, data);
 	if (xfer == NULL) {
-		k_mutex_unlock(&data->lock);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto unlock;
 	}
 
 	/*
@@ -455,9 +455,8 @@ static int hid_host_arm(struct hid_host_data *const data)
 	buf = usbh_xfer_buf_alloc(udev,
 				  data->max_report_len ? data->max_report_len : data->ep_mps);
 	if (buf == NULL) {
-		usbh_xfer_free(udev, xfer);
-		k_mutex_unlock(&data->lock);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_xfer;
 	}
 
 	xfer->buf = buf;
@@ -471,24 +470,32 @@ static int hid_host_arm(struct hid_host_data *const data)
 	}
 
 	if (slot < 0) {
-		usbh_xfer_buf_free(udev, buf);
-		usbh_xfer_free(udev, xfer);
-		k_mutex_unlock(&data->lock);
-		return -ENOBUFS;
+		ret = -ENOBUFS;
+		goto free_xfer;
 	}
 
 	ret = usbh_xfer_enqueue(udev, xfer);
 	if (ret != 0) {
 		data->in_xfer[slot] = NULL;
-		usbh_xfer_buf_free(udev, buf);
-		usbh_xfer_free(udev, xfer);
-		k_mutex_unlock(&data->lock);
-		return ret;
+		goto free_xfer;
 	}
 
 	k_mutex_unlock(&data->lock);
 
 	return 0;
+
+free_xfer:
+	/* xfer->buf is NULL until the buffer is attached, so this also covers
+	 * the failed-buffer-alloc path.
+	 */
+	if (xfer->buf != NULL) {
+		usbh_xfer_buf_free(udev, xfer->buf);
+	}
+	usbh_xfer_free(udev, xfer);
+unlock:
+	k_mutex_unlock(&data->lock);
+
+	return ret;
 }
 
 /* Translate one boot keyboard report into input key events (diff vs previous). */
