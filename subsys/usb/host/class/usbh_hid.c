@@ -24,7 +24,6 @@
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/input/input.h>
@@ -190,7 +189,7 @@ struct hid_host_data {
 	uint8_t proto;    /* HID_BOOT_IFACE_CODE_KEYBOARD/_MOUSE */
 	uint8_t ep_addr;  /* interrupt-IN endpoint */
 	uint16_t ep_mps;
-	atomic_t connected;
+	bool connected; /* device attached (guarded by lock) */
 	bool boot_fallback; /* decode the fixed boot layout (fallback) */
 	bool uses_report_ids;
 	/* Boot keyboard diff state. */
@@ -214,6 +213,10 @@ struct hid_input_evt {
 };
 
 static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer *const xfer);
+static void hid_emit(const struct device *dev, struct hid_input_evt *const pending,
+		     bool *const have, uint8_t type, uint16_t code, int32_t value);
+static void hid_emit_flush(const struct device *dev, const struct hid_input_evt *const pending,
+			   const bool have);
 
 /* Extract n_bits (LSB-first, little-endian) starting at bit_off, unsigned. */
 static uint32_t hid_extract_bits(const uint8_t *const data, uint16_t bit_off, uint8_t n_bits)
@@ -415,13 +418,30 @@ static uint16_t hid_field_usage(const struct hid_field *const f, uint8_t i)
  */
 static int hid_host_arm(struct hid_host_data *const data)
 {
+	struct usb_device *udev;
 	struct uhc_transfer *xfer;
 	struct net_buf *buf;
-	int slot;
+	int slot = -1;
 	int ret;
 
-	xfer = usbh_xfer_alloc(data->udev, data->ep_addr, hid_host_report_cb, data);
+	/*
+	 * Hold the lock across the whole arm and take udev from it. removed()
+	 * grabs the same lock to clear `connected` and null data->udev, so a
+	 * re-arm racing teardown is either fully ordered before removal or
+	 * rejected here -- it never allocates against a stale/NULL device. The
+	 * allocators are non-blocking (K_NO_WAIT), so holding the lock is safe.
+	 */
+	k_mutex_lock(&data->lock, K_FOREVER);
+
+	if (!data->connected) {
+		k_mutex_unlock(&data->lock);
+		return -ENODEV;
+	}
+	udev = data->udev;
+
+	xfer = usbh_xfer_alloc(udev, data->ep_addr, hid_host_report_cb, data);
 	if (xfer == NULL) {
+		k_mutex_unlock(&data->lock);
 		return -ENOMEM;
 	}
 
@@ -432,25 +452,16 @@ static int hid_host_arm(struct hid_host_data *const data)
 	 * controller stacking reports into an over-sized transfer. Fall back to
 	 * ep_mps only when no report length was parsed.
 	 */
-	buf = usbh_xfer_buf_alloc(data->udev,
+	buf = usbh_xfer_buf_alloc(udev,
 				  data->max_report_len ? data->max_report_len : data->ep_mps);
 	if (buf == NULL) {
-		usbh_xfer_free(data->udev, xfer);
+		usbh_xfer_free(udev, xfer);
+		k_mutex_unlock(&data->lock);
 		return -ENOMEM;
 	}
 
 	xfer->buf = buf;
 
-	k_mutex_lock(&data->lock, K_FOREVER);
-
-	if (!atomic_get(&data->connected)) {
-		k_mutex_unlock(&data->lock);
-		usbh_xfer_buf_free(data->udev, buf);
-		usbh_xfer_free(data->udev, xfer);
-		return -ENODEV;
-	}
-
-	slot = -1;
 	for (int i = 0; i < HID_HOST_QUEUE_DEPTH; i++) {
 		if (data->in_xfer[i] == NULL) {
 			data->in_xfer[i] = xfer;
@@ -460,18 +471,18 @@ static int hid_host_arm(struct hid_host_data *const data)
 	}
 
 	if (slot < 0) {
+		usbh_xfer_buf_free(udev, buf);
+		usbh_xfer_free(udev, xfer);
 		k_mutex_unlock(&data->lock);
-		usbh_xfer_buf_free(data->udev, buf);
-		usbh_xfer_free(data->udev, xfer);
 		return -ENOBUFS;
 	}
 
-	ret = usbh_xfer_enqueue(data->udev, xfer);
+	ret = usbh_xfer_enqueue(udev, xfer);
 	if (ret != 0) {
 		data->in_xfer[slot] = NULL;
+		usbh_xfer_buf_free(udev, buf);
+		usbh_xfer_free(udev, xfer);
 		k_mutex_unlock(&data->lock);
-		usbh_xfer_buf_free(data->udev, buf);
-		usbh_xfer_free(data->udev, xfer);
 		return ret;
 	}
 
@@ -485,6 +496,8 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 {
 	const uint8_t *keys = &report[2];
 	uint8_t mods = report[0];
+	struct hid_input_evt pending;
+	bool have_pending = false;
 
 	if (len < HID_KBD_REPORT_SIZE) {
 		return;
@@ -496,7 +509,8 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 		bool was = (data->prev_mods & BIT(b)) != 0;
 
 		if (now != was) {
-			input_report_key(data->dev, hid_kbd_modmap[b], now, true, K_NO_WAIT);
+			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+				 hid_kbd_modmap[b], now);
 		}
 	}
 
@@ -518,7 +532,8 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 		}
 
 		if (!still) {
-			input_report_key(data->dev, hid_kbd_keymap[usage], 0, true, K_NO_WAIT);
+			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+				 hid_kbd_keymap[usage], 0);
 		}
 	}
 
@@ -540,9 +555,12 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 		}
 
 		if (!had) {
-			input_report_key(data->dev, hid_kbd_keymap[usage], 1, true, K_NO_WAIT);
+			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+				 hid_kbd_keymap[usage], 1);
 		}
 	}
+
+	hid_emit_flush(data->dev, &pending, have_pending);
 
 	memcpy(data->prev_keys, keys, HID_KBD_NUM_KEYS);
 	data->prev_mods = mods;
@@ -551,9 +569,9 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 /* Translate one boot mouse report into input button/relative events. */
 static void hid_mouse_decode(struct hid_host_data *const data, const uint8_t *report, size_t len)
 {
-	struct hid_input_evt evt[ARRAY_SIZE(hid_mouse_btnmap) + 3];
+	struct hid_input_evt pending;
+	bool have_pending = false;
 	uint8_t buttons = report[0];
-	int n = 0;
 
 	if (len < HID_MOUSE_REPORT_MIN) {
 		return;
@@ -564,38 +582,26 @@ static void hid_mouse_decode(struct hid_host_data *const data, const uint8_t *re
 		bool was = (data->prev_buttons & BIT(b)) != 0;
 
 		if (now != was) {
-			evt[n].type = INPUT_EV_KEY;
-			evt[n].code = hid_mouse_btnmap[b];
-			evt[n].value = now;
-			n++;
+			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+				 hid_mouse_btnmap[b], now);
 		}
 	}
 	data->prev_buttons = buttons;
 
 	if ((int8_t)report[1] != 0) {
-		evt[n].type = INPUT_EV_REL;
-		evt[n].code = INPUT_REL_X;
-		evt[n].value = (int8_t)report[1];
-		n++;
+		hid_emit(data->dev, &pending, &have_pending, INPUT_EV_REL, INPUT_REL_X,
+			 (int8_t)report[1]);
 	}
 	if ((int8_t)report[2] != 0) {
-		evt[n].type = INPUT_EV_REL;
-		evt[n].code = INPUT_REL_Y;
-		evt[n].value = (int8_t)report[2];
-		n++;
+		hid_emit(data->dev, &pending, &have_pending, INPUT_EV_REL, INPUT_REL_Y,
+			 (int8_t)report[2]);
 	}
 	if (len > HID_MOUSE_REPORT_MIN && report[3] != 0) {
-		evt[n].type = INPUT_EV_REL;
-		evt[n].code = INPUT_REL_WHEEL;
-		evt[n].value = (int8_t)report[3];
-		n++;
+		hid_emit(data->dev, &pending, &have_pending, INPUT_EV_REL, INPUT_REL_WHEEL,
+			 (int8_t)report[3]);
 	}
 
-	/* Emit the batch, marking only the last event as the report sync point. */
-	for (int i = 0; i < n; i++) {
-		input_report(data->dev, evt[i].type, evt[i].code, evt[i].value, i == n - 1,
-			     K_NO_WAIT);
-	}
+	hid_emit_flush(data->dev, &pending, have_pending);
 }
 
 /*
@@ -926,6 +932,15 @@ static void hid_emit(const struct device *dev, struct hid_input_evt *const pendi
 	*have = true;
 }
 
+/* Flush the held event as the report's sync point (sync=true); no-op if none. */
+static void hid_emit_flush(const struct device *dev, const struct hid_input_evt *const pending,
+			   const bool have)
+{
+	if (have) {
+		input_report(dev, pending->type, pending->code, pending->value, true, K_NO_WAIT);
+	}
+}
+
 /* Translate one report-protocol report into input events using the parsed model. */
 static void hid_generic_decode(struct hid_host_data *const data, const uint8_t *const report,
 			       const size_t len)
@@ -1098,9 +1113,7 @@ static void hid_generic_decode(struct hid_host_data *const data, const uint8_t *
 	}
 
 	/* The report's final event carries the sync flag. */
-	if (have_pending) {
-		input_report(data->dev, pending.type, pending.code, pending.value, true, K_NO_WAIT);
-	}
+	hid_emit_flush(data->dev, &pending, have_pending);
 
 	if (cache != NULL) {
 		cache->len = (uint8_t)MIN(paylen, (size_t)CONFIG_USBH_HID_MAX_REPORT_SIZE);
@@ -1115,8 +1128,9 @@ static void hid_generic_decode(struct hid_host_data *const data, const uint8_t *
 
 /*
  * Interrupt-IN completion. Runs on the usbh request thread, concurrently with
- * probe/removed on the usbh bus thread. The connected flag (not xfer->err,
- * which is -EIO for HAL-cancelled transfers) decides whether to re-arm.
+ * probe/removed on the usbh bus thread. Re-arm is driven by the connected flag,
+ * not xfer->err: a cancelled transfer's error code is controller-specific and
+ * cannot reliably distinguish teardown from a genuine fault.
  */
 static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer *const xfer)
 {
@@ -1135,7 +1149,7 @@ static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer
 		}
 	}
 
-	connected = atomic_get(&data->connected);
+	connected = data->connected;
 
 	if (err == 0 && connected && xfer->buf != NULL) {
 		len = MIN(xfer->buf->len, sizeof(report));
@@ -1143,6 +1157,17 @@ static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer
 	}
 
 	k_mutex_unlock(&data->lock);
+
+	/*
+	 * A non-zero error while still connected is a genuine transfer fault. A
+	 * transfer cancelled during removal completes after `connected` is
+	 * cleared (usbh_hid_removed), so it is filtered out here. The error
+	 * value itself is not interpreted: its meaning on cancellation is
+	 * controller-specific.
+	 */
+	if (err != 0 && connected) {
+		LOG_WRN("interrupt-IN transfer error: %d", err);
+	}
 
 	if (xfer->buf != NULL) {
 		usbh_xfer_buf_free(udev, xfer->buf);
@@ -1169,6 +1194,8 @@ static int hid_host_report_cb(struct usb_device *const udev, struct uhc_transfer
 	return 0;
 }
 
+#define HID_DESCRIPTOR_READ_OFFSET 7
+
 /*
  * Walk the matched interface's descriptors to find the interrupt-IN endpoint,
  * the boot protocol/subclass, and the report descriptor length (from the HID
@@ -1193,16 +1220,15 @@ static int hid_host_setup_iface(struct hid_host_data *const data, struct usb_dev
 	data->proto = if_desc->bInterfaceProtocol;
 
 	for (desc = usbh_desc_get_next(if_desc); desc != NULL; desc = usbh_desc_get_next(desc)) {
-		const uint8_t *raw = (const uint8_t *)desc;
-
 		/* Stop at the next interface: end of this interface's descriptors. */
 		if (usbh_desc_is_valid_interface(desc)) {
 			break;
 		}
 
-		/* HID class descriptor: report descriptor length at offset 7..8. */
-		if (raw[1] == USB_DESC_HID && raw[0] >= 9) {
-			*rdlen = sys_get_le16(&raw[7]);
+		/* HID class descriptor: report descriptor length (HID 1.11 §6.2.1). */
+		if (usbh_desc_is_valid(desc, HID_DESCRIPTOR_READ_OFFSET + sizeof(uint16_t),
+				       USB_DESC_HID)) {
+			*rdlen = sys_get_le16((const uint8_t *)desc + HID_DESCRIPTOR_READ_OFFSET);
 		}
 
 		if (usbh_desc_is_valid_endpoint(desc) && !have_ep) {
@@ -1359,7 +1385,7 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 		LOG_WRN("SET_IDLE failed: %d", ret);
 	}
 
-	atomic_set(&data->connected, 1);
+	data->connected = true;
 	k_mutex_unlock(&data->lock);
 
 	for (int i = 0; i < HID_HOST_QUEUE_DEPTH; i++) {
@@ -1382,9 +1408,9 @@ static int usbh_hid_removed(struct usbh_class_data *const c_data)
 	const struct device *dev = c_data->priv;
 	struct hid_host_data *const data = dev->data;
 
-	atomic_set(&data->connected, 0);
-
 	k_mutex_lock(&data->lock, K_FOREVER);
+
+	data->connected = false;
 
 	/* Cancel in-flight transfers; their completion cb frees them. */
 	for (int i = 0; i < HID_HOST_QUEUE_DEPTH; i++) {
@@ -1409,7 +1435,7 @@ static int usbh_hid_init(struct usbh_class_data *const c_data)
 	memset(data, 0, sizeof(*data));
 	data->dev = dev;
 	k_mutex_init(&data->lock);
-	atomic_clear(&data->connected);
+	data->connected = false;
 
 	return 0;
 }
