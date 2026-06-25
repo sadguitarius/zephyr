@@ -1389,7 +1389,7 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	/* Idle 0: report only on change (best-effort; some devices STALL it). */
 	ret = usbh_req_setup(udev, HID_REQTYPE_SET, USB_HID_SET_IDLE, 0, target_iface, 0, NULL);
 	if (ret != 0) {
-		LOG_WRN("SET_IDLE failed: %d", ret);
+		LOG_DBG("SET_IDLE not accepted (interface %u): %d", target_iface, ret);
 	}
 
 	data->connected = true;
