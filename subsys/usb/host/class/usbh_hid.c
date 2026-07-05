@@ -498,6 +498,24 @@ unlock:
 	return ret;
 }
 
+/*
+ * Detect the keyboard phantom (rollover) condition (HID 1.11 §B.1): when
+ * more keys are pressed than the boot report can represent, all six keycodes
+ * read 0x01. Emit nothing for the key array in that case and keep the previous
+ * key state, so the next valid report diffs cleanly. Modifiers are a separate
+ * byte and unaffected, so they are still processed.
+ */
+static bool hid_kbd_phantom(const uint8_t *const keys)
+{
+	for (int i = 0; i < HID_KBD_NUM_KEYS; i++) {
+		if (keys[i] != 0x01) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /* Translate one boot keyboard report into input key events (diff vs previous). */
 static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *report, size_t len)
 {
@@ -505,12 +523,18 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 	uint8_t mods = report[0];
 	struct hid_input_evt pending;
 	bool have_pending = false;
+	bool phantom;
 
 	if (len < HID_KBD_REPORT_SIZE) {
 		return;
 	}
 
-	/* Modifier transitions. */
+	phantom = hid_kbd_phantom(keys);
+	if (phantom) {
+		LOG_INF("keyboard phantom (rollover) condition: too many keys pressed");
+	}
+
+	/* Modifier transitions (unaffected by rollover). */
 	for (int b = 0; b < 8; b++) {
 		bool now = (mods & BIT(b)) != 0;
 		bool was = (data->prev_mods & BIT(b)) != 0;
@@ -521,55 +545,58 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 		}
 	}
 
-	/* Releases: previously-pressed keys absent from the new report. */
-	for (int i = 0; i < HID_KBD_NUM_KEYS; i++) {
-		uint8_t usage = data->prev_keys[i];
-		bool still = false;
+	if (!phantom) {
+		/* Releases: previously-pressed keys absent from the new report. */
+		for (int i = 0; i < HID_KBD_NUM_KEYS; i++) {
+			uint8_t usage = data->prev_keys[i];
+			bool still = false;
 
-		if (usage <= 0x03 || usage >= ARRAY_SIZE(hid_kbd_keymap) ||
-		    hid_kbd_keymap[usage] == 0) {
-			continue;
-		}
+			if (usage <= 0x03 || usage >= ARRAY_SIZE(hid_kbd_keymap) ||
+			    hid_kbd_keymap[usage] == 0) {
+				continue;
+			}
 
-		for (int j = 0; j < HID_KBD_NUM_KEYS; j++) {
-			if (keys[j] == usage) {
-				still = true;
-				break;
+			for (int j = 0; j < HID_KBD_NUM_KEYS; j++) {
+				if (keys[j] == usage) {
+					still = true;
+					break;
+				}
+			}
+
+			if (!still) {
+				hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+					 hid_kbd_keymap[usage], 0);
 			}
 		}
 
-		if (!still) {
-			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
-				 hid_kbd_keymap[usage], 0);
-		}
-	}
+		/* Presses: keys in the new report not present before. */
+		for (int i = 0; i < HID_KBD_NUM_KEYS; i++) {
+			uint8_t usage = keys[i];
+			bool had = false;
 
-	/* Presses: keys in the new report not present before. */
-	for (int i = 0; i < HID_KBD_NUM_KEYS; i++) {
-		uint8_t usage = keys[i];
-		bool had = false;
+			if (usage <= 0x03 || usage >= ARRAY_SIZE(hid_kbd_keymap) ||
+			    hid_kbd_keymap[usage] == 0) {
+				continue;
+			}
 
-		if (usage <= 0x03 || usage >= ARRAY_SIZE(hid_kbd_keymap) ||
-		    hid_kbd_keymap[usage] == 0) {
-			continue;
-		}
+			for (int j = 0; j < HID_KBD_NUM_KEYS; j++) {
+				if (data->prev_keys[j] == usage) {
+					had = true;
+					break;
+				}
+			}
 
-		for (int j = 0; j < HID_KBD_NUM_KEYS; j++) {
-			if (data->prev_keys[j] == usage) {
-				had = true;
-				break;
+			if (!had) {
+				hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
+					 hid_kbd_keymap[usage], 1);
 			}
 		}
 
-		if (!had) {
-			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
-				 hid_kbd_keymap[usage], 1);
-		}
+		memcpy(data->prev_keys, keys, HID_KBD_NUM_KEYS);
 	}
 
 	hid_emit_flush(data->dev, &pending, have_pending);
 
-	memcpy(data->prev_keys, keys, HID_KBD_NUM_KEYS);
 	data->prev_mods = mods;
 }
 
@@ -1384,6 +1411,20 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 			return ret;
 		}
 		/* else: generic interface parsed 0 fields -- bind, nothing maps. */
+	}
+
+	if (IS_ENABLED(CONFIG_USBH_HID_FORCE_BOOT_PROTOCOL) && boot_capable &&
+	    !data->boot_fallback) {
+		LOG_INF("interface %u: forcing boot protocol (CONFIG_USBH_HID_FORCE_BOOT_PROTOCOL)",
+			target_iface);
+		ret = usbh_req_setup(udev, HID_REQTYPE_SET, USB_HID_SET_PROTOCOL,
+				     HID_PROTOCOL_BOOT, target_iface, 0, NULL);
+		if (ret != 0) {
+			LOG_WRN("SET_PROTOCOL(boot) failed: %d", ret);
+		}
+		data->boot_fallback = true;
+		/* Boot reports are fixed: kbd 8 bytes, mouse 3. */
+		data->max_report_len = HID_KBD_REPORT_SIZE;
 	}
 
 	/* Idle 0: report only on change (best-effort; some devices STALL it). */

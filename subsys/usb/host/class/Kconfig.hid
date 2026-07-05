@@ -47,6 +47,17 @@ config USBH_HID_MAX_REPORT_SIZE
 	  an endpoint whose mps exceeds this are truncated (a warning is logged on
 	  probe). Must be at least 8 for boot keyboard reports.
 
+config USBH_HID_FORCE_BOOT_PROTOCOL
+	bool "Force boot protocol on boot-capable devices (debug)"
+	help
+	  Force every boot-capable HID interface (subclass 1, protocol keyboard or
+	  mouse) onto the fixed boot report layout, even when its report descriptor
+	  parses successfully. Used to exercise the boot-protocol decoders -- and
+	  the keyboard rollover/phantom-detection path -- with any boot-capable
+	  keyboard or mouse, without needing a boot-only device. Leave disabled for
+	  normal operation (report protocol is preferred for N-key rollover and
+	  extra/media keys).
+
 module = USBH_HID
 module-str = usbh hid
 default-count = 2
