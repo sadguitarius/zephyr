@@ -4,8 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 
+# The CM4 (secondary-core) image also sets CONFIG_SECOND_CORE_MCUX=y (see
+# remote/prj.conf — needed for BUILD_OUTPUT_INFO_HEADER / _ADJUST_LMA), so it
+# intentionally matches the first branch too. LinkServer exposes flash only on
+# the primary (CM7) core, so --core=cm7 is correct for flashing *either* image.
 if(CONFIG_SOC_MIMXRT1176_CM7 OR CONFIG_SECOND_CORE_MCUX)
-  board_runner_args(linkserver "--no-reset")
   board_runner_args(pyocd "--target=mimxrt1170_cm7")
   board_runner_args(jlink "--device=MIMXRT1176xxxA_M7")
   board_runner_args(jlink "--no-reset")
@@ -13,6 +16,7 @@ if(CONFIG_SOC_MIMXRT1176_CM7 OR CONFIG_SECOND_CORE_MCUX)
   board_runner_args(linkserver "--device=MIMXRT1176xxxxx:MIMXRT1170-EVK")
   board_runner_args(linkserver "--core=cm7")
 elseif(CONFIG_SOC_MIMXRT1176_CM4)
+  # Standalone CM4 app that does NOT set SECOND_CORE_MCUX (debug-only path).
   board_runner_args(pyocd "--target=mimxrt1170_cm4")
   # Note: Use J-Link version 7.50 or later. Debugging only supports running
   # the CM4 image, since the board’s default boot core is CM7.

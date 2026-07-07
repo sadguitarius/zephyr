@@ -23,7 +23,7 @@ class LinkServerBinaryRunner(ZephyrBinaryRunner):
     '''Runner front-end for NXP Linkserver'''
     def __init__(self, cfg, device, core,
                  linkserver=DEFAULT_LINKSERVER_EXE,
-                 dt_flash=True, erase=True,
+                 dt_flash=True, erase=True, reset=True,
                  probe='#1',
                  gdb_host='',
                  gdb_port=DEFAULT_LINKSERVER_GDB_PORT,
@@ -42,6 +42,7 @@ class LinkServerBinaryRunner(ZephyrBinaryRunner):
         self.linkserver = linkserver
         self.dt_flash = dt_flash
         self.erase = erase
+        self.reset = True if reset is None else reset
         self.probe = probe
         self.gdb_host = gdb_host
         self.gdb_port = gdb_port
@@ -64,7 +65,8 @@ class LinkServerBinaryRunner(ZephyrBinaryRunner):
     def capabilities(cls):
         return RunnerCaps(commands={'flash', 'debug', 'debugserver', 'attach'},
                           dev_id=True, flash_addr=True, erase=True,
-                          tool_opt=True, file=True, batch_debug=True)
+                          tool_opt=True, file=True, batch_debug=True,
+                          reset=True)
 
     @classmethod
     def do_add_parser(cls, parser):
@@ -101,6 +103,7 @@ class LinkServerBinaryRunner(ZephyrBinaryRunner):
                                  linkserver=args.linkserver,
                                  dt_flash=args.dt_flash,
                                  erase=args.erase,
+                                 reset=args.reset,
                                  probe=args.probe,
                                  semihost_port=args.semihost_port,
                                  gdb_port=args.gdb_port,
@@ -219,6 +222,9 @@ class LinkServerBinaryRunner(ZephyrBinaryRunner):
         else:
             err = 'Cannot flash; no hex ({}), bin ({}) or elf ({}) files found.'
             raise ValueError(err.format(self.hex_name, self.bin_name, self.elf_name))
+
+        if not self.reset:
+            flash_cmd = [flash_cmd[0], '--no-reset'] + flash_cmd[1:]
 
         # Flash the selected file
         linkserver_cmd = linkserver_cmd + flash_cmd
