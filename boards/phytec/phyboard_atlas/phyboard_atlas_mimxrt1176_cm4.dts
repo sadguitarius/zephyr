@@ -1,0 +1,71 @@
+/*
+ * Copyright (c) 2025 PHYTEC America LLC
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * CM4 board definition for the phyBOARD-Atlas / phyCORE-RT1170 SOM.
+ *
+ * Modeled on the upstream NXP mimxrt1170_evk CM4 board file. The CM7 is the
+ * boot/master core; the CM4 is launched by the CM7 (see the sysbuild
+ * SECOND_CORE_MCUX flow) and runs its image out of OCRAM (ocram_m4_itcm).
+ *
+ * Only the peripherals the CM4 actually needs are enabled here. The CM7 owns
+ * the display, networking, USB, and SD card, so this file deliberately does NOT
+ * include the carrier phyboard_atlas.dtsi (which would enable those). We pull
+ * in the SOM common dtsi for SDRAM / FlexSPI partitions / LEDs and the carrier
+ * pinctrl dtsi for the LPUART6 pinmux.
+ *
+ * NOTE: This board target does not exist upstream; it is added here so the
+ *       dual-core sequencer app has a CM4 build target. Verify against your
+ *       Zephyr tree and adjust labels/pinmuxes as needed.
+ */
+
+/dts-v1/;
+
+#include <nxp/imxrt/nxp_rt1170_cm4.dtsi>
+#include <phytec/phycore_rt1170_common.dtsi>
+/* Carrier pinctrl (board-local) for the LPUART6 console pinmux. */
+#include "phyboard_atlas-pinctrl.dtsi"
+
+/ {
+	model = "PHYTEC phyBOARD-Atlas i.MX RT1170 CM4";
+	compatible = "phytec,phyboard_atlas";
+
+	chosen {
+		/* M4 runs from OCRAM after the CM7 copies the image there. */
+		zephyr,sram = &sram1;
+		zephyr,console = &lpuart6;
+		zephyr,shell-uart = &lpuart6;
+		zephyr,flash-controller = &ext_flash_ctrl;
+		zephyr,flash = &ocram_m4_itcm;
+		nxp,m4-partition = &slot1_partition;
+		/* Inter-core doorbell: the MU mirrored on this core is mailbox_b. */
+		zephyr,ipc = &mailbox_b;
+	};
+};
+
+&lpuart6 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&pinmux_lpuart6>;
+	pinctrl-names = "default";
+};
+
+&mailbox_b {
+	status = "okay";
+};
+
+&systick {
+	status = "okay";
+};
+
+/* GPT3 drives the sequencer step scheduler: a free-running 24 MHz counter
+ * with an absolute output-compare alarm. run-mode MUST be free-run -- in the
+ * default restart mode the counter resets to 0 on each compare, so absolute
+ * deadlines would take longer every step (tempo would drift slower and
+ * slower). In free-run, the counter keeps climbing and each deadline is
+ * computed from the previous one, so jitter can't accumulate into drift.
+ */
+&gpt3 {
+	status = "okay";
+	run-mode = "free-run";
+};

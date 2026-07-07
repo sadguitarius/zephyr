@@ -20,7 +20,13 @@ LOG_MODULE_REGISTER(usbd_midi2, CONFIG_USBD_MIDI2_LOG_LEVEL);
 #define MIDI1_ALTERNATE 0x00
 #define MIDI2_ALTERNATE 0x01
 
-UDC_BUF_POOL_DEFINE(usbd_midi_buf_pool, DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) * 2, 512U,
+/* Local patch (midi-sequencer): pool is sized `* 2` upstream, i.e. 1 RX + 1
+ * TX net_buf per instance. The single TX buf stays in flight until the host
+ * polls the IN endpoint, so a second usbd_midi_send() before that completes
+ * hits "Unable to allocate Tx net_buf" (recoverable, but noisy and it stalls
+ * the drain). Give 3 TX bufs of headroom by bumping the multiplier to 4.
+ */
+UDC_BUF_POOL_DEFINE(usbd_midi_buf_pool, DT_NUM_INST_STATUS_OKAY(DT_DRV_COMPAT) * 4, 512U,
 		    sizeof(struct udc_buf_info), NULL);
 
 #define MIDI_QUEUE_SIZE 64

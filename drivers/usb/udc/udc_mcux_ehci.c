@@ -413,6 +413,16 @@ static void udc_mcux_work_handler(struct k_work *item)
 					(struct usb_setup_packet *)mcux_msg->buffer;
 
 				err = udc_mcux_handler_setup(ev->dev, setup);
+			} else if (mcux_msg->length == USB_CANCELLED_TRANSFER_LENGTH) {
+				/* Completion for a transfer the MCUX controller
+				 * cancelled (e.g. endpoint deinit on a
+				 * SET_INTERFACE altsetting switch). The queued
+				 * buffer was already dropped by
+				 * udc_ep_cancel_queued(), so there is nothing to
+				 * hand up; routing it into the IN/OUT handlers
+				 * would only find an empty queue and raise a
+				 * spurious UDC_EVT_ERROR/-ENOBUFS. Ignore it. */
+				err = 0;
 			} else if (USB_EP_DIR_IS_IN(ep)) {
 				err = udc_mcux_handler_in(ev->dev, ep, mcux_msg->buffer,
 							  mcux_msg->length);
