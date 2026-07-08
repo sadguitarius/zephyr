@@ -79,7 +79,23 @@
 		reg = <0>;
 		status = "okay";
 		reset-gpios = <&gpio5 2 GPIO_ACTIVE_HIGH>;
-		int-gpios = <&gpio5 15 GPIO_ACTIVE_LOW>;
+
+		/*
+		 * The RT1170 MAC adds no RGMII delay, so the DP83867 supplies
+		 * it on both RX and TX. 0x5 (~1.5 ns) is the value Phytec ships
+		 * for this SOM (characterized against the PCB trace lengths).
+		 */
+		ti,interface-type = "rgmii-id";
+		ti,rx-internal-delay = <0x5>;
+		ti,tx-internal-delay = <0x5>;
+
+		/*
+		 * Poll link status (no int-gpios). Interrupt-driven detection
+		 * needs the nINT_ETHPHY pin muxed via Phytec's pinmux_enet1g,
+		 * which is coupled to the pre-refactor "nxp,enet1g" MAC binding
+		 * and does not wire up on mainline's unified "nxp,enet"; the
+		 * dp83867 monitor thread polls instead.
+		 */
 	};
 };
 
