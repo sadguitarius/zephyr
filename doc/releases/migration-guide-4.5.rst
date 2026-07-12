@@ -420,6 +420,30 @@ Interrupt Controllers
 * Deprecate ``GIC_NUM_CPU_IF`` from GIC header file :file:`gic.h`. One shall use
   instead.:kconfig:option:`CONFIG_MP_MAX_NUM_CPUS` instead.
 
+MSPI
+====
+
+* MSPI device binding filenames now use ``(vendor,)device-mspi.yaml`` for
+  MSPI-specific variants, while the devicetree ``compatible`` strings describe
+  the device itself instead of encoding the MSPI bus. Boards, shields, samples,
+  tests, and out-of-tree devicetree overlays are recommended to update MSPI
+  child node compatibles as follows:
+
+  * ``jedec,mspi-nor`` -> ``jedec,nor``
+  * ``mspi-atxp032`` -> ``atxp032``
+  * ``mspi-is25xX0xx`` -> ``is25xX0xx``
+  * ``mspi-aps6404l`` -> ``aps6404l``
+  * ``mspi-aps-z8`` -> ``aps-z8``
+  * ``zephyr,mspi-emul-device`` -> ``zephyr,emul-device-mspi``
+  * ``zephyr,mspi-emul-flash`` -> ``zephyr,emul-flash``
+
+  It is recommended that out-of-tree MSPI device drivers should likewise update
+  ``DT_DRV_COMPAT`` and generated devicetree Kconfig symbol references to the new compatible names.
+  If a driver, sample, or test must ensure that one of these generic
+  compatibles is instantiated on an MSPI bus, add an explicit MSPI bus check,
+  such as ``dt_compat_on_bus`` in Kconfig or ``dt_compat_on_bus`` filters in
+  test metadata.
+
 NXP
 ===
 
@@ -599,11 +623,17 @@ USB
   from :samp:`usbotg_hs{N}` to :samp:`usbphyc{N}` nodes at SoC DTSI level. Boards which
   use an STM32N6 SoC with custom clock mux configuration must now set the ``clocks``
   property on :samp:`usbphyc{N}` instead of :samp:`usbotg_hs{N}`. (:github:`107813`)
+* Indicating protocol error via ``errno`` in control transfer handlers is deprecated.
+  Handlers should return error code directly. (:github:`108118`)
 * When host issues control transfer with data stage from host to device, the USB control transfer
   callbacks ``control_to_dev`` in :c:struct:`usbd_class_api` and ``to_dev`` in
   :c:struct:`usbd_vreq_node` are now called with NULL ``buf`` before data stage is received.
   This allows the stack to return STALL during data stage. Out-of-tree class and vendor handlers
   need to be updated. (:github:`108840`)
+* The Espressif USB-OTG full-speed controller compatible ``espressif,esp32-usb-otg`` has been
+  renamed to :dtcompatible:`espressif,esp32-usb-otg-fs`. The internal PHY D+/D- pad numbers are
+  now provided through the ``phy-dp-pin`` and ``phy-dm-pin`` properties. Out-of-tree devicetrees
+  using the old compatible must update the node compatible and add the two pin properties.
 
 Video
 =====
@@ -892,6 +922,12 @@ Networking
   resolution should migrate to mDNS (:kconfig:option:`CONFIG_MDNS_RESOLVER` /
   :kconfig:option:`CONFIG_MDNS_RESPONDER`).
 
+* The following MQTT-SN transport functions now take an :c:struct:`mqtt_sn_transport`
+  instead of an :c:struct:`mqtt_sn_client`:
+
+  * :c:member:`mqtt_sn_transport.recvfrom`
+  * :c:member:`mqtt_sn_transport.poll`
+  * :c:member:`mqtt_sn_transport.sendto`
 
 Ethernet
 ========

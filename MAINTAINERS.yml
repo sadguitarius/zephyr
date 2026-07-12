@@ -680,6 +680,7 @@ Bluetooth HCI:
     - "area: Bluetooth"
   tests:
     - bluetooth
+    - sample.bluetooth
 
 Bluetooth Host:
   status: maintained
@@ -899,11 +900,17 @@ Bouffalolab Platforms:
     - "platform: Bouffalo Lab"
 
 Broadcom Platforms:
-  status: odd fixes
+  status: maintained
+  maintainers:
+    - walidbadar
   files:
     - dts/*/broadcom/
     - soc/brcm/
     - boards/brcm/
+    - boards/raspberrypi/rpi_4b/
+    - boards/raspberrypi/rpi_5/
+  labels:
+    - "platform: Broadcom"
 
 Build Dashboard:
   status: maintained
@@ -1282,6 +1289,7 @@ Device Driver Model:
   collaborators:
     - dcpleung
     - nashif
+    - edersondisouza
   files:
     - include/zephyr/device.h
     - kernel/device.c
@@ -1296,12 +1304,11 @@ Device Driver Model:
     - init
 
 Devicetree:
-  status: maintained
-  maintainers:
-    - mbolivar
+  status: odd fixes
   collaborators:
-    - decsny
+    - mbolivar
     - rruuaanng
+    - kylebonnici
   files-regex:
     - ^dts/bindings/.*zephyr.*
     - ^dts/bindings/[^,]+$
@@ -1358,8 +1365,6 @@ Disk:
     - dts/bindings/disk/
   file-groups:
     - name: eMMC
-      collaborators:
-        - decsny
       files-regex:
         - ^(?!.*sdmmc).*mmc
   labels:
@@ -1929,7 +1934,6 @@ Documentation Infrastructure:
   maintainers:
     - maass-hamburg
   collaborators:
-    - decsny
     - lmajewski
     - pdgendt
     - ClaCodes
@@ -2361,7 +2365,7 @@ Documentation Infrastructure:
     - tests/drivers/mspi/
     - doc/hardware/peripherals/mspi.rst
     - dts/bindings/mspi/
-    - dts/bindings/mtd/mspi*
+    - dts/bindings/mtd/*mspi*
   labels:
     - "area: MSPI"
   tests:
@@ -2618,8 +2622,6 @@ Documentation Infrastructure:
 
 "Drivers: Reset":
   status: odd fixes
-  collaborators:
-    - decsny
   files:
     - drivers/reset/
     - include/zephyr/drivers/reset.h
@@ -2708,7 +2710,6 @@ Documentation Infrastructure:
     - tbursztyka
   collaborators:
     - teburd
-    - decsny
   files:
     - drivers/spi/
     - include/zephyr/drivers/spi.h
@@ -3104,6 +3105,7 @@ Espressif Platforms:
     - uLipe
     - raffarost
     - wmrsouza
+    - tmedicci
   files:
     - drivers/*/*esp32*.c
     - boards/espressif/
@@ -3113,6 +3115,8 @@ Espressif Platforms:
     - samples/boards/espressif/
     - tests/boards/espressif/
     - drivers/*/*esp32*/
+    - drivers/wifi/esp_hosted/
+    - drivers/wifi/esp_at/
   file-groups:
     - name: Espressif hosted Wi-Fi driver
       files:
@@ -3608,6 +3612,7 @@ Key-Value Storage Systems:
     - lyakh
     - pillo79
     - laurenmurphyx64
+    - edersondisouza
   files:
     - cmake/llext-edk.cmake
     - samples/subsys/llext/
@@ -3649,6 +3654,7 @@ Linters and Static Analyzers:
     - nashif
     - kartben
     - pdgendt
+    - kylebonnici
   files:
     - .codechecker.yml
     - .codecov.yml
@@ -4979,10 +4985,10 @@ PMCI:
   status: maintained
   maintainers:
     - teburd
+    - edersondisouza
   collaborators:
     - nashif
     - kehintel
-    - edersondisouza
   files:
     - subsys/pmci/
     - samples/subsys/pmci/
@@ -5085,10 +5091,10 @@ RISCV arch:
   status: maintained
   maintainers:
     - fkokosinski
+  collaborators:
     - kgugala
     - tgorochowik
-  collaborators:
-    - edersondisouza
+    - dcpleung
     - katsuster
     - mgielda
     - npitre
@@ -5750,6 +5756,12 @@ Silabs Platforms:
     - drivers/*/*/*siwx91x*
     - tests/boards/silabs/
     - snippets/*silabs*/
+  file-groups:
+    - name: Silabs IEEE 802.15.4
+      collaborators:
+        - db00lean
+      files:
+        - drivers/ieee802154/
   labels:
     - "platform: Silabs"
   tests:
@@ -6986,10 +6998,10 @@ West:
   status: maintained
   maintainers:
     - teburd
+    - edersondisouza
   collaborators:
     - nashif
     - dkalowsk
-    - edersondisouza
   files: []
   labels:
     - "area: MCTP"
