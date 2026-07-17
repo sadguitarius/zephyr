@@ -10,6 +10,11 @@
 #include <zephyr/drivers/counter.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/irq.h>
+#include <zephyr/spinlock.h>
+#if defined(CONFIG_GIC)
+#include <zephyr/drivers/interrupt_controller/gic.h>
+#endif /* CONFIG_GIC */
+
 #include <fsl_gpt.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/barrier.h>
@@ -28,6 +33,7 @@ struct mcux_gpt_config {
 	const struct device *clock_dev;
 	clock_control_subsys_t clock_subsys;
 	bool enable_free_run;
+	unsigned int irq;
 	void (*irq_config_func)(void);
 };
 
@@ -37,7 +43,28 @@ struct mcux_gpt_data {
 	counter_top_callback_t top_callback;
 	void *alarm_user_data;
 	void *top_user_data;
+	uint32_t guard_period;
+	bool late_alarm_pending;
+	struct k_spinlock lock;
 };
+
+static inline void mcux_gpt_set_irq_pending(unsigned int irq)
+{
+#if defined(CONFIG_GIC)
+	arm_gic_irq_set_pending(irq);
+#else  /* NVIC */
+	NVIC_SetPendingIRQ(irq);
+#endif /* CONFIG_GIC */
+}
+
+static inline bool mcux_gpt_irq_is_pending(unsigned int irq)
+{
+#if defined(CONFIG_GIC)
+	return arm_gic_irq_is_pending(irq);
+#else  /* NVIC */
+	return NVIC_GetPendingIRQ((IRQn_Type)irq) != 0U;
+#endif /* CONFIG_GIC */
+}
 
 static GPT_Type *get_base(const struct device *dev)
 {
@@ -73,47 +100,132 @@ static int mcux_gpt_get_value(const struct device *dev, uint32_t *ticks)
 static int mcux_gpt_set_alarm(const struct device *dev, uint8_t chan_id,
 			      const struct counter_alarm_cfg *alarm_cfg)
 {
+	const struct mcux_gpt_config *config = dev->config;
 	GPT_Type *base = get_base(dev);
 	struct mcux_gpt_data *data = dev->data;
-
-	uint32_t current = GPT_GetCurrentTimerCount(base);
 	uint32_t ticks = alarm_cfg->ticks;
+	bool absolute = (alarm_cfg->flags & COUNTER_ALARM_CFG_ABSOLUTE) != 0;
 
-	if (chan_id != 0) {
+	if (chan_id >= config->info.channels) {
 		LOG_ERR("Invalid channel id");
 		return -EINVAL;
 	}
 
-	if ((alarm_cfg->flags & COUNTER_ALARM_CFG_ABSOLUTE) == 0) {
-		ticks += current;
+	if (alarm_cfg->callback == NULL) {
+		return -EINVAL;
 	}
 
 	if (data->alarm_callback) {
 		return -EBUSY;
 	}
 
+	/* OCR1 is an absolute compare against the free-running counter. If the
+	 * counter has already passed the compare value, the match does not fire
+	 * until the 32-bit counter wraps (~179 s at 24 MHz). When a guard
+	 * period is configured, a late absolute alarm is rejected with
+	 * -ETIME. If COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE is also set, the
+	 * callback is additionally delivered from the GPT ISR — the same
+	 * context a timely alarm fires from — by pending the IRQ in software.
+	 *
+	 * The spinlock makes the read-check-program sequence atomic:
+	 * preemption cannot let the counter advance past the target between
+	 * the counter read and the OCR1 write, and it also serializes this
+	 * sequence against cancel_alarm() and the ISR.
+	 */
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	uint32_t now = GPT_GetCurrentTimerCount(base);
+
+	if (!absolute) {
+		ticks += now;
+	}
+
+	if (data->guard_period > 0) {
+		/* "Late" (counting up): the counter has advanced past the
+		 * target by fewer than guard_period ticks.
+		 */
+		bool late = (uint32_t)(now - ticks) < data->guard_period;
+
+		if (late) {
+			if (alarm_cfg->flags & COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE) {
+				/* The target is in the past. Deliver the
+				 * callback from the GPT ISR — the same context
+				 * a timely alarm fires from — by pending the
+				 * IRQ in software. OCR1 is left unprogrammed:
+				 * the compare value is behind the counter, so a
+				 * hardware match would not fire until the
+				 * 32-bit wrap.
+				 */
+				data->alarm_callback = alarm_cfg->callback;
+				data->alarm_user_data = alarm_cfg->user_data;
+				data->late_alarm_pending = true;
+				mcux_gpt_set_irq_pending(config->irq);
+				k_spin_unlock(&data->lock, key);
+				return -ETIME;
+			}
+
+			k_spin_unlock(&data->lock, key);
+			return -ETIME;
+		}
+	}
+
+	/* Commit to the alarm: store the callback and program OCR1 inside the
+	 * critical section so the ISR cannot observe a half-installed alarm.
+	 */
 	data->alarm_callback = alarm_cfg->callback;
 	data->alarm_user_data = alarm_cfg->user_data;
 
 	GPT_SetOutputCompareValue(base, kGPT_OutputCompare_Channel1,
 				  ticks);
 	GPT_EnableInterrupts(base, kGPT_OutputCompare1InterruptEnable);
+	k_spin_unlock(&data->lock, key);
 
 	return 0;
 }
 
 static int mcux_gpt_cancel_alarm(const struct device *dev, uint8_t chan_id)
 {
+	const struct mcux_gpt_config *config = dev->config;
 	GPT_Type *base = get_base(dev);
 	struct mcux_gpt_data *data = dev->data;
 
-	if (chan_id != 0) {
+	if (chan_id >= config->info.channels) {
 		LOG_ERR("Invalid channel id");
 		return -EINVAL;
 	}
 
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+
 	GPT_DisableInterrupts(base, kGPT_OutputCompare1InterruptEnable);
 	data->alarm_callback = NULL;
+	data->late_alarm_pending = false;
+
+	k_spin_unlock(&data->lock, key);
+
+	return 0;
+}
+
+static uint32_t mcux_gpt_get_guard_period(const struct device *dev,
+					 uint32_t flags)
+{
+	struct mcux_gpt_data *data = dev->data;
+
+	if (flags & COUNTER_GUARD_PERIOD_LATE_TO_SET) {
+		return data->guard_period;
+	}
+
+	return 0U;
+}
+
+static int mcux_gpt_set_guard_period(const struct device *dev, uint32_t guard,
+				    uint32_t flags)
+{
+	struct mcux_gpt_data *data = dev->data;
+
+	if (!(flags & COUNTER_GUARD_PERIOD_LATE_TO_SET)) {
+		return -ENOSYS;
+	}
+
+	data->guard_period = guard;
 
 	return 0;
 }
@@ -130,12 +242,29 @@ void mcux_gpt_isr(const struct device *dev)
 	GPT_ClearStatusFlags(base, status);
 	barrier_dsync_fence_full();
 
-	if ((status & kGPT_OutputCompare1Flag) && data->alarm_callback) {
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	bool late_alarm_pending = data->late_alarm_pending;
+	counter_alarm_callback_t alarm_cb = data->alarm_callback;
+	void *alarm_user_data = data->alarm_user_data;
+
+	if (late_alarm_pending) {
+		/* Late alarm dispatched via a software-pended IRQ
+		 * (COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE). OF1 was not
+		 * programmed, so do not require the hardware flag.
+		 */
+		data->late_alarm_pending = false;
+		data->alarm_callback = NULL;
+	} else if ((status & kGPT_OutputCompare1Flag) && alarm_cb) {
 		GPT_DisableInterrupts(base,
 				      kGPT_OutputCompare1InterruptEnable);
-		counter_alarm_callback_t alarm_cb = data->alarm_callback;
 		data->alarm_callback = NULL;
-		alarm_cb(dev, 0, current, data->alarm_user_data);
+	} else {
+		alarm_cb = NULL;
+	}
+	k_spin_unlock(&data->lock, key);
+
+	if (alarm_cb) {
+		alarm_cb(dev, 0, current, alarm_user_data);
 	}
 
 	if ((status & kGPT_RollOverFlag) && data->top_callback) {
@@ -145,9 +274,23 @@ void mcux_gpt_isr(const struct device *dev)
 
 static uint32_t mcux_gpt_get_pending_int(const struct device *dev)
 {
+	const struct mcux_gpt_config *config = dev->config;
 	GPT_Type *base = get_base(dev);
+	struct mcux_gpt_data *data = dev->data;
 
-	return GPT_GetStatusFlags(base, kGPT_OutputCompare1Flag);
+	if (GPT_GetStatusFlags(base, kGPT_OutputCompare1Flag) != 0U) {
+		return 1U;
+	}
+
+	/* Covers the late-alarm path: OCR1 is left unprogrammed and the
+	 * callback is instead delivered via a software-pended IRQ, so the
+	 * hardware flag above never gets set for it.
+	 */
+	if (data->late_alarm_pending && mcux_gpt_irq_is_pending(config->irq)) {
+		return 1U;
+	}
+
+	return 0U;
 }
 
 static int mcux_gpt_set_top_value(const struct device *dev,
@@ -270,6 +413,8 @@ static DEVICE_API(counter, mcux_gpt_driver_api) = {
 	.set_top_value = mcux_gpt_set_top_value,
 	.get_pending_int = mcux_gpt_get_pending_int,
 	.get_top_value = mcux_gpt_get_top_value,
+	.get_guard_period = mcux_gpt_get_guard_period,
+	.set_guard_period = mcux_gpt_set_guard_period,
 	.reset = mcux_gpt_reset,
 };
 
@@ -283,6 +428,7 @@ static DEVICE_API(counter, mcux_gpt_driver_api) = {
 		.clock_subsys =						\
 			(clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, name),\
 		.enable_free_run = (DT_INST_ENUM_IDX_OR(n, run_mode, 0) == 1),\
+		.irq = DT_INST_IRQN(n),\
 		.info = {						\
 			.max_top_value = UINT32_MAX,			\
 			.freq = DT_INST_PROP(n, gptfreq),           \
