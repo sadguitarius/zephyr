@@ -595,6 +595,7 @@ static inline void timestamp_rx_pkt(Gmac *gmac, struct gptp_hdr *hdr,
 	}
 
 	net_pkt_set_timestamp(pkt, &timestamp);
+	net_pkt_set_rx_timestamping(pkt, true);
 }
 
 #endif
@@ -1811,9 +1812,6 @@ static enum ethernet_hw_caps eth_sam_gmac_get_capabilities(const struct device *
 	return ETHERNET_LINK_10BASE |
 #if defined(CONFIG_NET_VLAN)
 		ETHERNET_HW_VLAN |
-#endif
-#if defined(CONFIG_PTP_CLOCK_SAM_GMAC)
-		ETHERNET_PTP |
 #endif
 		ETHERNET_PRIORITY_QUEUES |
 #if GMAC_ACTIVE_PRIORITY_QUEUE_NUM >= 1

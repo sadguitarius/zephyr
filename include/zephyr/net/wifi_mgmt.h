@@ -1070,11 +1070,15 @@ struct wifi_twt_params {
 
 /* Flow ID is only 3 bits */
 #define WIFI_MAX_TWT_FLOWS 8
-#define WIFI_MAX_TWT_INTERVAL_US (LONG_MAX - 1)
+/* The TWT interval is encoded per IEEE 802.11 as mantissa * 2^exponent
+ * micro-seconds, with a 16-bit mantissa and a 5-bit exponent. The maximum
+ * representable interval is therefore UINT16_MAX * 2^WIFI_MAX_TWT_EXPONENT us.
+ */
+#define WIFI_MAX_TWT_EXPONENT 31
+#define WIFI_MAX_TWT_INTERVAL_US ((uint64_t)UINT16_MAX << WIFI_MAX_TWT_EXPONENT)
 /* 256 (u8) * 1TU */
 #define WIFI_MAX_TWT_WAKE_INTERVAL_US 262144
 #define WIFI_MAX_TWT_WAKE_AHEAD_DURATION_US (LONG_MAX - 1)
-#define WIFI_MAX_TWT_EXPONENT 31
 
 /** @endcond */
 
@@ -2119,7 +2123,7 @@ struct wifi_mgmt_ops {
 	 *
 	 * @param dev Pointer to the device structure for the driver instance.
 	 * @param iface Network interface to use for the filter operation
-	 * @param packet filter settings
+	 * @param filter Filter settings
 	 *
 	 * @return 0 if ok, < 0 if error
 	 */
@@ -2215,7 +2219,7 @@ struct wifi_mgmt_ops {
 	 *
 	 * @param dev Pointer to the device structure for the driver instance.
 	 * @param iface Network interface to use for the RTS threshold operation
-	 * @param RTS threshold value
+	 * @param rts_threshold RTS threshold value
 	 *
 	 * @return 0 if ok, < 0 if error
 	 */
@@ -2509,7 +2513,7 @@ void wifi_mgmt_raise_ap_sta_disconnected_event(struct net_if *iface,
  * @brief Raise P2P device found event
  *
  * @param iface Network interface
- * @param device_info P2P device information
+ * @param peer_info P2P device information
  */
 void wifi_mgmt_raise_p2p_device_found_event(struct net_if *iface,
 		struct wifi_p2p_device_info *peer_info);

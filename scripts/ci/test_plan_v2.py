@@ -500,6 +500,8 @@ class TwisterExecutor:
     def _build_cmd(self, call, save_path):
         cmd = [str(self._zephyr_base / "scripts" / "twister"), "-c"]
 
+        cmd += ["--test-config", "tests/test_config_ci.yaml"]
+
         for pattern in call.test_patterns:
             cmd += ["--test-pattern", pattern]
 
@@ -3182,7 +3184,7 @@ class ManifestStrategy(SelectionStrategy):
                 "(e.g. comment / formatting edit) - no module tests needed.",
                 self.name,
             )
-            return set(manifest_files), set(manifest_files)
+            return [], set(manifest_files)
 
         log.info(
             "[%s] Changed west.yml modules: %s",

@@ -147,7 +147,7 @@ manifest:
       groups:
         - fs
     - name: hal_adi
-      revision: 35d874ccfb8fb062ca8bdf096764b8d34c6d608e
+      revision: a554a31806bc308d954fdb43143d260902da9b1e
       path: modules/hal/adi
       groups:
         - hal
@@ -172,7 +172,7 @@ manifest:
       groups:
         - hal
     - name: hal_espressif
-      revision: 563219d8db677b70e92f1493e4e46b018bf41120
+      revision: d6a25c8f2a019f7e4d21cf664075f6b94c28eae8
       path: modules/hal/espressif
       west-commands: west/west-commands.yml
       groups:
@@ -213,7 +213,7 @@ manifest:
       groups:
         - hal
     - name: hal_nxp
-      revision: 02a097059315d7b9a7f7f7d38ee9c97f906867ce
+      revision: 6c77523dfdfc5a1ecefbafb31feee6499a5de8ec
       path: modules/hal/nxp
       groups:
         - hal
@@ -229,7 +229,7 @@ manifest:
         - hal
     - name: hal_realtek
       path: modules/hal/realtek
-      revision: b106aa7cbbb78cee74c0d8063f19eecc575a80b2
+      revision: 9a4caf9846d6f0ceb6b38f971a771b1325c1e4b9
       groups:
         - hal
     - name: hal_renesas
@@ -258,7 +258,7 @@ manifest:
       groups:
         - hal
     - name: hal_stm32
-      revision: 1cf7a28fc71e4b99bd0d9a44c0b780e2ff28d82b
+      revision: 9b6fb9e0ee432d12a31b6327a3690d243b74d178
       path: modules/hal/stm32
       groups:
         - hal
@@ -273,7 +273,7 @@ manifest:
       groups:
         - hal
     - name: hal_ti
-      revision: 063b2a62d6e9c5db2978eacaf574155747b59f76
+      revision: d9d5b1c9a72b21f9fc30f5815be2232b081e650c
       path: modules/hal/ti
       groups:
         - hal
@@ -324,12 +324,12 @@ manifest:
       revision: bbedf2656086a93a8468a1c98168a6b36631ce9a
       path: modules/lib/gui/lvgl
     - name: mbedtls
-      revision: 554163f6f7b2ec71fed9b423e81f2217a8615d29
+      revision: 098e120afb51877ed814bdc04443890ae12e0642
       path: modules/crypto/mbedtls
       groups:
         - crypto
     - name: mcuboot
-      revision: 0fae8920c4e5acb792b3fe766c89c668f42be6ee
+      revision: c38f7a10c14ae8b95c0296cd10320907c28e02c7
       path: bootloader/mcuboot
       groups:
         - bootloader
@@ -389,7 +389,7 @@ manifest:
         - testing
         - tee
     - name: tf-psa-crypto
-      revision: 2d881593696aec687ca2246c53de207c2b9bf782
+      revision: fa92349590a54959ee2efc21b668e5afdb144726
       path: modules/crypto/tf-psa-crypto
       groups:
         - crypto
@@ -399,7 +399,7 @@ manifest:
       groups:
         - tee
     - name: trusted-firmware-m
-      revision: f6ee0e2b3c049b0f054dbbcb76e827dc61a4f7d6
+      revision: 52c7593c1f361a9d7cebc0fa83e5bcfb1e415032
       path: modules/tee/tf-m/trusted-firmware-m
       groups:
         - tee

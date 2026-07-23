@@ -50,7 +50,7 @@ LOG_MODULE_REGISTER(net_ipv6_nd, CONFIG_NET_IPV6_ND_LOG_LEVEL);
 /* Maximum reachable time value specified in RFC 4861 section
  * 6.2.1. Router Configuration Variables, AdvReachableTime
  */
-#define MAX_REACHABLE_TIME 3600000
+#define MAX_REACHABLE_TIME NET_IPV6_MAX_REACHABLE_TIME
 
 /* IPv6 minimum link MTU specified in RFC 8200 section 5
  * Packet Size Issues
@@ -1013,7 +1013,7 @@ try_send:
 		entry = net_pmtu_get_entry((struct net_sockaddr *)&dst);
 		if (entry == NULL) {
 			ret = net_pmtu_update_mtu((struct net_sockaddr *)&dst,
-						  net_if_get_mtu(iface));
+						  net_if_get_mtu(net_pkt_iface(pkt)));
 			if (ret < 0) {
 				NET_DBG("Cannot update PMTU for %s (%d)",
 					net_sprint_ipv6_addr(&dst.sin6_addr),
@@ -2783,7 +2783,7 @@ static enum net_verdict handle_ra_input(struct net_icmp_ctx *ctx,
 	}
 
 	if (reachable_time && reachable_time <= MAX_REACHABLE_TIME &&
-	    (net_if_ipv6_get_reachable_time(net_pkt_iface(pkt)) !=
+	    (net_if_ipv6_get_base_reachable_time(net_pkt_iface(pkt)) !=
 	     reachable_time)) {
 		net_if_ipv6_set_base_reachable_time(net_pkt_iface(pkt),
 						    reachable_time);

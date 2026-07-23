@@ -667,7 +667,7 @@ Bluetooth HCI:
     - HoZHel
     - cvinayak
     - HaavardRei
-    - merin-infineon
+    - MerinMGeorge
   files:
     - include/zephyr/drivers/bluetooth/
     - include/zephyr/drivers/bluetooth.h
@@ -1941,6 +1941,7 @@ Documentation Infrastructure:
     - lmajewski
     - pdgendt
     - ClaCodes
+    - tpambor
   files:
     - drivers/ethernet/
     - include/zephyr/dt-bindings/ethernet/
@@ -1960,6 +1961,7 @@ Documentation Infrastructure:
   tests:
     - net.ethernet
     - sample.drivers.ethernet
+    - net.ethernet.build
 
 "Drivers: FPGA":
   status: maintained
@@ -2835,6 +2837,8 @@ Documentation Infrastructure:
     - "area: Timer"
   tests:
     - drivers.timer
+    - kernel
+    - arch
 
 "Drivers: Time Aware GPIO":
   status: maintained
@@ -2880,13 +2884,10 @@ Documentation Infrastructure:
     - drivers/video/
     - include/zephyr/drivers/video.h
     - include/zephyr/drivers/video/
-    - include/zephyr/drivers/video-controls.h
     - include/zephyr/dt-bindings/video/
     - doc/hardware/peripherals/video.rst
     - tests/drivers/*/video/
     - dts/bindings/video/
-    - samples/drivers/video/
-    - tests/drivers/video/
   labels:
     - "area: Video"
   tests:
@@ -2959,6 +2960,7 @@ Documentation Infrastructure:
     - kludentwo
     - krish2718
     - MaochenWang1
+    - maass-hamburg
   files:
     - drivers/wifi/
     - dts/bindings/wifi/
@@ -3339,7 +3341,7 @@ Infineon Platforms:
     - jsbatch
     - Peterson-Brett
     - lauracarlesso
-    - merin-infineon
+    - MerinMGeorge
     - ifx-rmcs
     - parthitce
   files:
@@ -4052,7 +4054,7 @@ Modem:
     - subsys/modem/
     - include/zephyr/modem/
     - tests/subsys/modem/
-    - doc/services/modem/
+    - doc/services/connectivity/modem/
     - samples/net/cellular_modem/
     - include/zephyr/drivers/cellular.h
   labels:
@@ -5215,6 +5217,7 @@ Raspberry Pi Pico Platforms:
   collaborators:
     - threeeights
     - ajf58
+    - dsseng
   files:
     - boards/raspberrypi/rpi_pico*/
     - boards/adafruit/kb2040/
@@ -5926,6 +5929,19 @@ TDK Sensors:
   tests:
     - drivers.sensor
 
+TI AM13 Platforms:
+  status: maintained
+  maintainers:
+    - glneo
+  collaborators:
+    - s-m33r
+  files:
+    - boards/ti/*am13*/
+    - dts/arm/ti/am13*/
+    - soc/ti/am13*/
+  labels:
+    - "platform: TI AM13"
+
 TI K3 Platforms:
   status: maintained
   maintainers:
@@ -5952,20 +5968,23 @@ TI K3 Platforms:
   labels:
     - "platform: TI K3"
 
-TI MSPM0 Platforms:
+TI MSPM Platforms:
   status: maintained
   maintainers:
     - ssekar15
+    - glneo
+  collaborators:
     - d-philpot
+    - Aman-Lachhiramka-ti
   files:
-    - soc/ti/mspm0/
-    - boards/ti/*mspm0*/
-    - dts/arm/ti/mspm0/
+    - soc/ti/mspm/
+    - boards/ti/*mspm*/
+    - dts/arm/ti/mspm*/
     - dts/bindings/*/*mspm0*
     - drivers/*/*_mspm0*
     - modules/Kconfig.mspm0
   labels:
-    - "platform: Texas Instruments MSPM0"
+    - "platform: TI MSPM"
 
 TI SimpleLink Platforms:
   status: maintained
@@ -6345,6 +6364,7 @@ Utilities:
     - tests/lib/ringbuffer/
     - tests/lib/notify/
     - tests/lib/linear_range/
+    - tests/lib/cobs/
   file-groups:
     - name: COBS
       collaborators:
@@ -6372,6 +6392,24 @@ VFS:
     - "area: File System"
   tests:
     - filesystem
+
+Video Subsystem:
+  status: maintained
+  maintainers:
+    - josuah
+    - ngphibang
+  collaborators:
+    - loicpoulain
+    - avolmat-st
+  files:
+    - include/zephyr/video/
+    - samples/subsys/video/
+    - subsys/video/
+    - tests/subsys/video/
+  labels:
+    - "area: Video"
+  tests:
+    - video
 
 WCH Platforms:
   status: maintained
@@ -6716,7 +6754,7 @@ West:
     - jsbatch
     - Peterson-Brett
     - lauracarlesso
-    - merin-infineon
+    - MerinMGeorge
     - ifx-rmcs
   files:
     - modules/Kconfig.infineon
@@ -6795,8 +6833,8 @@ West:
 "West project: hal_nxp":
   status: maintained
   maintainers:
-    - ZhaoxiangJin
     - mmahadevan108
+    - zejiang0jason
   collaborators:
     - manuargue
     - PetervdPerk-NXP
@@ -6804,7 +6842,6 @@ West:
     - JiafeiPan
     - MaochenWang1
     - axelnxp
-    - zejiang0jason
     - Holt-Sun
     - lucien-nxp
   files:
@@ -6868,6 +6905,7 @@ West:
   collaborators:
     - threeeights
     - ajf58
+    - dsseng
   files:
     - modules/hal_rpi_pico/
   labels:

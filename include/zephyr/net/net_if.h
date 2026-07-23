@@ -433,6 +433,17 @@ struct net_if_dhcpv6 {
 	/** Retransmit timeout for the current message, milliseconds. */
 	uint32_t retransmit_timeout;
 
+	/** Maximum Solicit retransmit timeout, milliseconds. */
+	uint32_t sol_max_rt;
+
+	/** Maximum Information-request retransmit timeout, milliseconds. */
+	uint32_t inf_max_rt;
+
+	/** Information-request refresh interval, milliseconds; 0 means never
+	 *  refresh (infinity).
+	 */
+	uint32_t info_refresh_time;
+
 	/** Current best server preference received. */
 	int16_t server_preference;
 
@@ -1013,7 +1024,7 @@ enum net_verdict net_if_try_send_data(struct net_if *iface,
 /**
  * @brief Send a packet through a net iface
  *
- * This is equivalent to net_if_try_queue_tx with an infinite timeout
+ * This is equivalent to net_if_try_send_data with an infinite timeout
  * @param iface Pointer to a network interface structure
  * @param pkt Pointer to a net packet to send
  *
@@ -2107,10 +2118,22 @@ static inline void net_if_ipv6_set_mcast_hop_limit(struct net_if *iface,
 #endif /* CONFIG_NET_NATIVE_IPV6 */
 
 /**
+ * @brief Maximum IPv6 base reachable time in milliseconds.
+ *
+ * Upper bound for the base reachable time, matching the AdvReachableTime limit
+ * from RFC 4861 section 6.2.1. Values passed to
+ * @ref net_if_ipv6_set_base_reachable_time above this are clamped. This also
+ * keeps @ref net_if_ipv6_calc_reachable_time from overflowing when it scales
+ * the value by the RFC 4861 random factor.
+ */
+#define NET_IPV6_MAX_REACHABLE_TIME 3600000U
+
+/**
  * @brief Set IPv6 reachable time for a given interface
  *
  * @param iface Network interface
- * @param reachable_time New reachable time
+ * @param reachable_time New reachable time. Values above
+ *                       @ref NET_IPV6_MAX_REACHABLE_TIME are clamped.
  */
 static inline void net_if_ipv6_set_base_reachable_time(struct net_if *iface,
 						       uint32_t reachable_time)
@@ -2124,11 +2147,40 @@ static inline void net_if_ipv6_set_base_reachable_time(struct net_if *iface,
 		return;
 	}
 
+	if (reachable_time > NET_IPV6_MAX_REACHABLE_TIME) {
+		reachable_time = NET_IPV6_MAX_REACHABLE_TIME;
+	}
+
 	iface->config.ip.ipv6->base_reachable_time = reachable_time;
 #else
 	ARG_UNUSED(iface);
 	ARG_UNUSED(reachable_time);
 
+#endif
+}
+
+/**
+ * @brief Get IPv6 base reachable time for a given interface
+ *
+ * @param iface Network interface
+ *
+ * @return Base reachable time in milliseconds
+ */
+static inline uint32_t net_if_ipv6_get_base_reachable_time(struct net_if *iface)
+{
+#if defined(CONFIG_NET_NATIVE_IPV6)
+	if (iface == NULL) {
+		return 0;
+	}
+
+	if (iface->config.ip.ipv6 == NULL) {
+		return 0;
+	}
+
+	return iface->config.ip.ipv6->base_reachable_time;
+#else
+	ARG_UNUSED(iface);
+	return 0;
 #endif
 }
 
@@ -2685,6 +2737,22 @@ struct net_if_router *net_if_ipv4_router_add(struct net_if *iface,
  * @return True if successfully removed, false otherwise
  */
 bool net_if_ipv4_router_rm(struct net_if_router *router);
+
+/**
+ * @brief Add an IPv4 route to the system routing table.
+ *
+ * @param iface Network interface this route is tied to.
+ * @param addr Destination IPv4 address of the route.
+ * @param mask_len Destination netmask length.
+ * @param nexthop IPv4 address of the next hop, or NULL for an on-link
+ *                (directly connected) route.
+ * @param lifetime Route lifetime in seconds (UINT32_MAX for a route that
+ *                 never expires).
+ *
+ * @return 0 on success, negative errno otherwise.
+ */
+int net_if_ipv4_route_add(struct net_if *iface, const struct net_in_addr *addr, uint8_t mask_len,
+			  const struct net_in_addr *nexthop, uint32_t lifetime);
 
 /**
  * @brief Check if the given IPv4 address belongs to local subnet.
@@ -3547,6 +3615,7 @@ extern int net_stats_prometheus_scrape(struct prometheus_collector *collector,
  * Enables to use of `NET_IF_GET` above the instantiation macro.
  *
  * @param dev_id Device ID provided to `NET_IF_INIT` or `NET_IF_OFFLOAD_INIT`
+ * @param inst Instance identifier
  */
 #define NET_IF_DECLARE(dev_id, inst) \
 	static struct net_if NET_IF_GET_NAME(dev_id, inst)
