@@ -90,11 +90,9 @@
 		ti,tx-internal-delay = <0x5>;
 
 		/*
-		 * Poll link status (no int-gpios). Interrupt-driven detection
-		 * needs the nINT_ETHPHY pin muxed via Phytec's pinmux_enet1g,
-		 * which is coupled to the pre-refactor "nxp,enet1g" MAC binding
-		 * and does not wire up on mainline's unified "nxp,enet"; the
-		 * dp83867 monitor thread polls instead.
+		 * Poll link status (no int-gpios): the nINT_ETHPHY interrupt
+		 * does not fire on this board. The dp83867 monitor thread
+		 * polls instead.
 		 */
 	};
 };

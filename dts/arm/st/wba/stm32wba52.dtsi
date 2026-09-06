@@ -52,6 +52,12 @@
 				status = "disabled";
 				#pwm-cells = <3>;
 			};
+
+			qdec {
+				compatible = "st,stm32-qdec";
+				st,input-filter-level = <NO_FILTER>;
+				status = "disabled";
+			};
 		};
 
 		timers3: timers@40000400 {
@@ -75,6 +81,12 @@
 				status = "disabled";
 				#pwm-cells = <3>;
 			};
+
+			qdec {
+				compatible = "st,stm32-qdec";
+				st,input-filter-level = <NO_FILTER>;
+				status = "disabled";
+			};
 		};
 
 		usart2: serial@40004400 {
@@ -90,7 +102,7 @@
 			compatible = "st,stm32u5-dma";
 			#dma-cells = <3>;
 			reg = <0x40020000 0x1000>;
-			interrupts = <29 0 30 0 31 0 32 0 33 0 34 0 35 0 36 0>;
+			interrupts = <29 0>, <30 0>, <31 0>, <32 0>, <33 0>, <34 0>, <35 0>, <36 0>;
 			clocks = <&rcc STM32_CLOCK(AHB1, 0)>;
 			dma-channels = <8>;
 			dma-requests = <52>;
