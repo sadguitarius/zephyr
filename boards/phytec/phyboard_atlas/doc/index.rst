@@ -234,7 +234,7 @@ Dual Core samples
 +===========+==================+==================+
 | Cortex M7 | 0x30000000[630K] | primary core     |
 +-----------+------------------+------------------+
-| Cortex M4 | 0x20020000[96k]  | boots from OCRAM |
+| Cortex M4 | 0x20200000[256K] | boots from OCRAM |
 +-----------+------------------+------------------+
 
 +----------+------------------+-----------------------+
@@ -242,17 +242,19 @@ Dual Core samples
 +==========+==================+=======================+
 | flexspi1 | 0x30000000[16M]  | Cortex M7 flash       |
 +----------+------------------+-----------------------+
-| sdram0   | 0x80030000[64M]  | Cortex M7 ram         |
+| sdram0   | 0x80000000[64M]  | Cortex M7 ram         |
 +----------+------------------+-----------------------+
-| ocram    | 0x20020000[512K] | Cortex M4 "flash"     |
+| ocram    | 0x20200000[256K] | Cortex M4 "flash"     |
++----------+------------------+-----------------------+
+| ocram1   | 0x20240000[512K] | General purpose OCRAM |
 +----------+------------------+-----------------------+
 | sram1    | 0x20000000[128K] | Cortex M4 ram         |
 +----------+------------------+-----------------------+
-| ocram2   | 0x200C0000[512K] | Mailbox/shared memory |
+| ocram2   | 0x202C0000[512K] | Mailbox/shared memory |
 +----------+------------------+-----------------------+
 
-Only the first 16K of ocram2 has the correct MPU region attributes set to be
-used as shared memory
+No part of ocram2 is configured as non-cacheable by default. An application using it as
+shared memory must declare the region with ``zephyr,memory-attr`` in a devicetree overlay.
 
 System Clock
 ============
