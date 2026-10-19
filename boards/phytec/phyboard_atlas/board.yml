@@ -4,3 +4,13 @@ board:
   vendor: phytec
   socs:
     - name: mimxrt1176
+runners:
+  run_once:
+    '--reset':
+      - runners:
+          - linkserver
+        run: last
+        groups:
+          - boards:
+              - phyboard_atlas/mimxrt1176/cm7
+              - phyboard_atlas/mimxrt1176/cm4
