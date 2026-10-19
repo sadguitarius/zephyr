@@ -1,0 +1,40 @@
+/*
+ * Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/dts-v1/;
+
+#include <nxp/imxrt/imxrt11xx/nxp_rt1170_cm4.dtsi>
+#include <phytec/phycore_rt1170_common.dtsi>
+#include "phyboard_atlas-pinctrl.dtsi"
+
+/ {
+	model = "PHYTEC phyBOARD-Atlas i.MX RT1170 CM4";
+	compatible = "phytec,phyboard_atlas";
+
+	chosen {
+		zephyr,sram = &sram1;
+		zephyr,console = &lpuart6;
+		zephyr,shell-uart = &lpuart6;
+		zephyr,flash-controller = &ext_flash_ctrl;
+		zephyr,flash = &ocram_m4_itcm;
+		nxp,m4-partition = &slot1_partition;
+		zephyr,ipc = &mailbox_b;
+	};
+};
+
+&lpuart6 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&pinmux_lpuart6>;
+	pinctrl-names = "default";
+};
+
+&mailbox_b {
+	status = "okay";
+};
+
+&systick {
+	status = "okay";
+};
