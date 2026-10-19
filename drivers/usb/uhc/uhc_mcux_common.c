@@ -386,6 +386,17 @@ int uhc_mcux_hal_init_transfer_common(const struct device *dev, usb_host_transfe
 		} else {
 			mcux_xfer->transferLength = net_buf_tailroom(xfer->buf);
 			mcux_xfer->transferBuffer = net_buf_tail(xfer->buf);
+			/*
+			 * Limit a control-IN data stage to wLength so the host
+			 * does not request more data than the device sends.
+			 */
+			if (USB_EP_GET_IDX(xfer->ep) == 0U) {
+				uint16_t wlength = sys_le16_to_cpu(mcux_xfer->setupPacket->wLength);
+
+				if (wlength < mcux_xfer->transferLength) {
+					mcux_xfer->transferLength = wlength;
+				}
+			}
 		}
 	} else {
 		mcux_xfer->transferBuffer = NULL;
