@@ -41,6 +41,7 @@ struct mcux_gpt_config {
 	const struct device *clock_dev;
 	clock_control_subsys_t clock_subsys;
 	bool enable_free_run;
+	unsigned int irq;
 	gpt_clock_source_t clock_source;
 	uint8_t osc_divider;
 #ifdef CONFIG_COUNTER_64BITS_FREQ
@@ -64,6 +65,8 @@ struct mcux_gpt_data {
 	counter_top_callback_t top_callback;
 	void *alarm_user_data;
 	void *top_user_data;
+	uint32_t guard_period;
+	bool late_alarm_pending;
 #ifdef CONFIG_COUNTER_CAPTURE
 	counter_capture_cb_t capture_callback[IMX_GPT_N_CAPTURE_CHANNELS];
 	void *capture_user_data[IMX_GPT_N_CAPTURE_CHANNELS];
@@ -121,6 +124,7 @@ static int mcux_gpt_get_value(const struct device *dev, uint32_t *ticks)
 static int mcux_gpt_set_alarm(const struct device *dev, uint8_t chan_id,
 			      const struct counter_alarm_cfg *alarm_cfg)
 {
+	const struct mcux_gpt_config *config = dev->config;
 	GPT_Type *base = get_base(dev);
 	struct mcux_gpt_data *data = dev->data;
 
@@ -132,12 +136,33 @@ static int mcux_gpt_set_alarm(const struct device *dev, uint8_t chan_id,
 		return -EINVAL;
 	}
 
+	if (alarm_cfg->callback == NULL) {
+		return -EINVAL;
+	}
+
 	if ((alarm_cfg->flags & COUNTER_ALARM_CFG_ABSOLUTE) == 0) {
 		ticks += current;
 	}
 
 	if (data->alarm_callback) {
 		return -EBUSY;
+	}
+
+	if (((alarm_cfg->flags & COUNTER_ALARM_CFG_ABSOLUTE) != 0U) &&
+	    ((uint32_t)(current - ticks) < data->guard_period)) {
+		/*
+		 * OCR1 already lies behind the counter and would only match
+		 * after the 32-bit wrap. Leave it unprogrammed and pend the
+		 * IRQ, so the ISR delivers the late alarm.
+		 */
+		if ((alarm_cfg->flags & COUNTER_ALARM_CFG_EXPIRE_WHEN_LATE) != 0U) {
+			data->alarm_callback = alarm_cfg->callback;
+			data->alarm_user_data = alarm_cfg->user_data;
+			data->late_alarm_pending = true;
+			k_irq_set_pending(config->irq);
+		}
+
+		return -ETIME;
 	}
 
 	data->alarm_callback = alarm_cfg->callback;
@@ -161,7 +186,37 @@ static int mcux_gpt_cancel_alarm(const struct device *dev, uint8_t chan_id)
 	}
 
 	GPT_DisableInterrupts(base, kGPT_OutputCompare1InterruptEnable);
+	data->late_alarm_pending = false;
 	data->alarm_callback = NULL;
+
+	return 0;
+}
+
+static uint32_t mcux_gpt_get_guard_period(const struct device *dev, uint32_t flags)
+{
+	struct mcux_gpt_data *data = dev->data;
+
+	if ((flags & COUNTER_GUARD_PERIOD_LATE_TO_SET) == 0U) {
+		return 0U;
+	}
+
+	return data->guard_period;
+}
+
+static int mcux_gpt_set_guard_period(const struct device *dev, uint32_t guard, uint32_t flags)
+{
+	const struct mcux_gpt_config *config = dev->config;
+	struct mcux_gpt_data *data = dev->data;
+
+	if ((flags & COUNTER_GUARD_PERIOD_LATE_TO_SET) == 0U) {
+		return -ENOSYS;
+	}
+
+	if (guard >= config->info.max_top_value) {
+		return -EINVAL;
+	}
+
+	data->guard_period = guard;
 
 	return 0;
 }
@@ -181,11 +236,13 @@ void mcux_gpt_isr(const struct device *dev)
 	GPT_ClearStatusFlags(base, status);
 	barrier_dsync_fence_full();
 
-	if ((status & kGPT_OutputCompare1Flag) && data->alarm_callback) {
+	if ((((status & kGPT_OutputCompare1Flag) != 0U) || data->late_alarm_pending) &&
+	    (data->alarm_callback != NULL)) {
 		GPT_DisableInterrupts(base,
 				      kGPT_OutputCompare1InterruptEnable);
 		counter_alarm_callback_t alarm_cb = data->alarm_callback;
 		data->alarm_callback = NULL;
+		data->late_alarm_pending = false;
 		alarm_cb(dev, 0, current, data->alarm_user_data);
 	}
 
@@ -226,14 +283,21 @@ void mcux_gpt_isr(const struct device *dev)
 
 static uint32_t mcux_gpt_get_pending_int(const struct device *dev)
 {
+	const struct mcux_gpt_config *config = dev->config;
 	GPT_Type *base = get_base(dev);
+	struct mcux_gpt_data *data = dev->data;
 	uint32_t flags = kGPT_OutputCompare1Flag;
 
 #ifdef CONFIG_COUNTER_CAPTURE
 	flags |= kGPT_InputCapture1Flag | kGPT_InputCapture2Flag;
 #endif
 
-	return GPT_GetStatusFlags(base, flags);
+	if (GPT_GetStatusFlags(base, flags) != 0U) {
+		return 1U;
+	}
+
+	/* A late alarm sets no status flag, only the pended IRQ. */
+	return (data->late_alarm_pending && k_irq_is_pending(config->irq)) ? 1U : 0U;
 }
 
 static int mcux_gpt_set_top_value(const struct device *dev,
@@ -487,6 +551,8 @@ static DEVICE_API(counter, mcux_gpt_driver_api) = {
 	.set_top_value = mcux_gpt_set_top_value,
 	.get_pending_int = mcux_gpt_get_pending_int,
 	.get_top_value = mcux_gpt_get_top_value,
+	.get_guard_period = mcux_gpt_get_guard_period,
+	.set_guard_period = mcux_gpt_set_guard_period,
 	.reset = mcux_gpt_reset,
 #ifdef CONFIG_COUNTER_CAPTURE
 	.capture_configure = mcux_gpt_capture_configure,
@@ -513,6 +579,7 @@ static DEVICE_API(counter, mcux_gpt_driver_api) = {
 		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),                                \
 		.clock_subsys = (clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, name),              \
 		.enable_free_run = (DT_INST_ENUM_IDX_OR(n, run_mode, 0) == 1),                     \
+		.irq = DT_INST_IRQN(n),                                                            \
 		.clock_source = (gpt_clock_source_t)DT_INST_ENUM_IDX_OR(n, clock_source, 1),       \
 		.high_freq = DT_INST_PROP_OR(n, high_freq, 0),                                     \
 		.low_freq = DT_INST_PROP_OR(n, low_freq, 0),                                       \
