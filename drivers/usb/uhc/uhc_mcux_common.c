@@ -126,13 +126,43 @@ int uhc_mcux_dequeue(const struct device *dev, struct uhc_transfer *const xfer)
 	return uhc_mcux_control(dev, kUSB_HostCancelTransfer, &cancel_param);
 }
 
-/* Controller driver calls this function when device attach. */
+/*
+ * Close every cached HAL pipe. A cached pipe is matched by its struct usb_device
+ * pointer, and the host stack can give a new device the pointer of a removed
+ * one, so a stale pipe of the removed device would otherwise serve the new one.
+ */
+static void uhc_mcux_close_hal_eps(const struct device *dev)
+{
+	struct uhc_mcux_data *priv = uhc_get_private(dev);
+	usb_host_pipe_t *mcux_eps[USB_HOST_CONFIG_MAX_PIPES];
+
+	uhc_mcux_lock(dev);
+	memcpy(mcux_eps, priv->mcux_eps, sizeof(mcux_eps));
+	memset(priv->mcux_eps, 0, sizeof(priv->mcux_eps));
+	memset(priv->mcux_eps_interval, 0, sizeof(priv->mcux_eps_interval));
+	uhc_mcux_unlock(dev);
+
+	for (uint8_t i = 0U; i < USB_HOST_CONFIG_MAX_PIPES; i++) {
+		if (mcux_eps[i] != NULL) {
+			(void)priv->mcux_if->controllerClosePipe(priv->mcux_host.controllerHandle,
+								 mcux_eps[i]);
+		}
+	}
+}
+
+/*
+ * Controller driver calls this function when a device attaches to the root port.
+ * Every cached pipe then belongs to a device that is gone.
+ */
 usb_status_t USB_HostAttachDevice(usb_host_handle hostHandle, uint8_t speed, uint8_t hubNumber,
 				  uint8_t portNumber, uint8_t level,
 				  usb_device_handle *deviceHandle)
 {
 	enum uhc_event_type type;
 	struct uhc_mcux_data *priv;
+
+	priv = (struct uhc_mcux_data *)(PRV_DATA_HANDLE(hostHandle));
+	uhc_mcux_close_hal_eps(priv->dev);
 
 	if (speed == USB_SPEED_HIGH) {
 		type = UHC_EVT_DEV_CONNECTED_HS;
@@ -142,7 +172,6 @@ usb_status_t USB_HostAttachDevice(usb_host_handle hostHandle, uint8_t speed, uin
 		type = UHC_EVT_DEV_CONNECTED_LS;
 	}
 
-	priv = (struct uhc_mcux_data *)(PRV_DATA_HANDLE(hostHandle));
 	uhc_submit_event(priv->dev, type, 0);
 
 	return kStatus_USB_Success;
@@ -342,11 +371,10 @@ usb_host_pipe_t *uhc_mcux_init_hal_ep(const struct device *dev, struct uhc_trans
 	}
 
 	/* Initialize mcux hal endpoint pipe
-	 * TODO: Need one way to release the pipe.
-	 * Otherwise the priv->mcux_eps will be used up after
-	 * supporting hub and connecting/disconnecting multiple times.
-	 * For example: add endpoint/pipe init and de-init controller
-	 * interface to resolve the issue.
+	 * TODO: Release the pipes of a device that disconnects behind a hub.
+	 * uhc_mcux_close_hal_eps() only runs on a root port attach, so they
+	 * stay cached until then. For example: add endpoint/pipe init and
+	 * de-init controller interface to resolve the issue.
 	 */
 	uhc_mcux_lock(dev);
 	for (i = 0; i < USB_HOST_CONFIG_MAX_PIPES; i++) {
