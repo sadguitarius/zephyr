@@ -53,6 +53,15 @@ config USBH_HID_MAX_REPORT_SIZE
 	  probe). The minimum is the 8-byte boot keyboard report. The maximum keeps
 	  the report length, including the report-ID byte, within one byte.
 
+config USBH_HID_FORCE_BOOT_PROTOCOL
+	bool "Force boot protocol on boot-capable devices (debug)"
+	help
+	  Switch every boot-capable HID interface (subclass 1, protocol keyboard
+	  or mouse) to the boot protocol, even when its report descriptor parses.
+	  This exercises the boot decoders, including the keyboard phantom state,
+	  with any boot-capable keyboard or mouse. Leave disabled for normal
+	  operation: the report protocol supports N-key rollover and extra keys.
+
 module = USBH_HID
 module-str = usbh hid
 default-count = 2

@@ -1496,6 +1496,25 @@ static int hid_setup_generic(struct hid_host_data *const data, struct usb_device
 	return 0;
 }
 
+/*
+ * Reason a boot-capable interface uses the boot protocol, or NULL to keep the
+ * report protocol. setup_ret is the result of hid_setup_generic().
+ */
+static const char *hid_boot_reason(const struct hid_host_data *const data, int setup_ret)
+{
+	if (setup_ret != 0) {
+		return "no report descriptor";
+	}
+	if (data->n_fields == 0U) {
+		return "no mappable fields";
+	}
+	if (IS_ENABLED(CONFIG_USBH_HID_FORCE_BOOT_PROTOCOL)) {
+		return "CONFIG_USBH_HID_FORCE_BOOT_PROTOCOL";
+	}
+
+	return NULL;
+}
+
 static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_device *const udev,
 			  const uint8_t iface)
 {
@@ -1503,6 +1522,7 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	struct hid_host_data *const data = dev->data;
 	uint8_t target_iface = (iface == USBH_CLASS_IFNUM_DEVICE) ? 0U : iface;
 	uint16_t rdlen = 0U;
+	const char *boot_reason;
 	bool boot_capable;
 	int ret;
 
@@ -1573,10 +1593,9 @@ static int usbh_hid_probe(struct usbh_class_data *const c_data, struct usb_devic
 	}
 
 	/* A generic interface with no mappable fields still binds; nothing maps. */
-	if (boot_capable && ((ret != 0) || (data->n_fields == 0U))) {
-		/* No usable report descriptor: fall back to boot layout. */
-		LOG_INF("interface %u: boot-protocol fallback (%s)", target_iface,
-			(ret != 0) ? "no report descriptor" : "no mappable fields");
+	boot_reason = boot_capable ? hid_boot_reason(data, ret) : NULL;
+	if (boot_reason != NULL) {
+		LOG_INF("interface %u: boot protocol (%s)", target_iface, boot_reason);
 		ret = usbh_req_setup(udev, HID_REQTYPE_SET, USB_HID_SET_PROTOCOL, HID_PROTOCOL_BOOT,
 				     target_iface, 0, NULL);
 		if (ret != 0) {
