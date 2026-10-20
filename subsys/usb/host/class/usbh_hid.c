@@ -679,6 +679,21 @@ unlock:
 	return ret;
 }
 
+/*
+ * Keyboard phantom state (HID 1.11 Appendix C): all six boot report keycodes
+ * are ErrorRollOver when more keys are pressed than the report holds.
+ */
+static bool hid_kbd_phantom(const uint8_t *const keys)
+{
+	for (uint8_t i = 0U; i < HID_KBD_NUM_KEYS; i++) {
+		if (keys[i] != HID_KBD_USAGE_ERR_ROLLOVER) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /* Translate one boot keyboard report into input key events (diff vs previous). */
 static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *report, size_t len)
 {
@@ -700,6 +715,14 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 			hid_emit(data->dev, &pending, &have_pending, INPUT_EV_KEY,
 				 hid_kbd_modmap[b], now ? 1 : 0);
 		}
+	}
+	data->prev_mods = mods;
+
+	/* A phantom report emits no key events and keeps the previous key state. */
+	if (hid_kbd_phantom(keys)) {
+		LOG_DBG("boot keyboard rollover (ErrorRollOver) report");
+		hid_emit_flush(data->dev, &pending, have_pending);
+		return;
 	}
 
 	/* Releases: previously-pressed keys absent from the new report. */
@@ -749,7 +772,6 @@ static void hid_kbd_decode(struct hid_host_data *const data, const uint8_t *repo
 	hid_emit_flush(data->dev, &pending, have_pending);
 
 	memcpy(data->prev_keys, keys, HID_KBD_NUM_KEYS);
-	data->prev_mods = mods;
 }
 
 /* Translate one boot mouse report into input button/relative events. */
