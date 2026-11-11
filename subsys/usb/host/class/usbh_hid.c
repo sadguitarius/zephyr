@@ -385,7 +385,8 @@ static uint16_t hid_consumer_keycode(uint16_t usage)
 /*
  * Map a (usage page, usage) to an input event type + code. `relative` picks
  * REL vs ABS for axes; `btn_ns` picks the button namespace. Returns false for
- * usages this driver does not translate.
+ * usages this driver does not translate, including the Generic Desktop hat
+ * switch (0x39).
  */
 static bool hid_map_usage(uint16_t page, uint16_t usage, bool relative, uint8_t btn_ns,
 			  uint8_t *const type, uint16_t *const code)
@@ -626,10 +627,11 @@ static int hid_host_arm(struct hid_host_data *const data)
 	}
 
 	/*
-	 * Size the buffer to exactly one (max) report, not ep_mps: this both
-	 * admits a report larger than MPS arriving across several packets
-	 * (HID 1.11 section 8.4) and, because there is never room for a second
-	 * whole report, stops the controller stacking reports into an over-sized
+	 * Size the buffer to one report of the maximum length, not ep_mps. A
+	 * report larger than MPS then arrives across several packets in one
+	 * transfer (HID 1.11 section 8.4), and a second report of that length
+	 * does not fit. A shorter report that ends on a packet boundary sends no
+	 * short packet, so the next report can still follow it in the same
 	 * transfer. Fall back to ep_mps only when no report length was parsed.
 	 */
 	buf = usbh_xfer_buf_alloc(udev, (data->max_report_len != 0U) ? data->max_report_len
@@ -1124,10 +1126,8 @@ static __noinline bool hid_parse_report_desc(struct hid_host_data *const data,
 
 	/*
 	 * Wire length of the largest input report: payload plus the leading
-	 * report-id byte when report ids are in use. Sizing the interrupt-IN
-	 * buffer to exactly this (hid_host_arm) lets a report span multiple
-	 * packets (HID 1.11 section 8.4) without the controller stacking several
-	 * reports into one over-sized transfer.
+	 * report-id byte when report ids are in use. hid_host_arm() sizes the
+	 * interrupt-IN buffer to it.
 	 */
 	if (data->uses_report_ids) {
 		maxlen += 1U;
